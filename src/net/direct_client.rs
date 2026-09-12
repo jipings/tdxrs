@@ -304,7 +304,8 @@ impl TdxDirectClient {
             pkt.push(market);
             pkt.extend_from_slice(&utils::code_bytes(code));
         }
-        parse_security_quotes(&self.send_and_recv(&pkt)?)
+        let quotes = parse_security_quotes(&self.send_and_recv(&pkt)?)?;
+        Ok(filter_quotes_by_request(all_stock, quotes))
     }
 
     // ================================================================

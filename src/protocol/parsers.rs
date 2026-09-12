@@ -571,6 +571,33 @@ pub fn format_servertime(ts: u64) -> String {
     }
 }
 
+/// 按请求的 (market, code) 过滤行情响应
+///
+/// 服务器对无效/退市等代码可能返回错位的垃圾记录——code 与请求不符、
+/// 字段全零 (例如请求 (0,"999999") 会解出一条 (1,"600839") 的全零记录)，
+/// 此前会原样混入结果。这里只保留与请求匹配的记录并去重，
+/// 丢弃数量以 warning 记录。
+pub fn filter_quotes_by_request(
+    requested: &[(u8, &str)],
+    records: Vec<SecurityQuote>,
+) -> Vec<SecurityQuote> {
+    let mut allowed: std::collections::HashSet<(u8, String)> =
+        requested.iter().map(|&(m, c)| (m, c.to_string())).collect();
+    let mut kept = Vec::with_capacity(records.len());
+    let mut dropped = 0usize;
+    for r in records {
+        if allowed.remove(&(r.market, r.code.clone())) {
+            kept.push(r);
+        } else {
+            dropped += 1;
+        }
+    }
+    if dropped > 0 {
+        crate::logw!("hq", "quotes 响应含 {} 条与请求不符的记录（无效代码或服务器错位），已丢弃", dropped);
+    }
+    kept
+}
+
 // ============================================================
 // 解析实时行情 (最复杂的解析器)
 // ============================================================
@@ -1359,5 +1386,51 @@ mod tests {
         // 分钟位 >= 60: 走小时小数分支, 至少保证格式合法不 panic
         let s = format_servertime(15998827);
         assert!(s.starts_with("15:"), "got {}", s);
+    }
+
+    // --- filter_quotes_by_request ---
+
+    fn test_quote(market: u8, code: &str) -> SecurityQuote {
+        SecurityQuote {
+            market,
+            code: code.to_string(),
+            active1: 0, price: 0.0, last_close: 0.0, open: 0.0, high: 0.0, low: 0.0,
+            servertime: String::new(), vol: 0.0, cur_vol: 0.0, amount: 0.0,
+            s_vol: 0.0, b_vol: 0.0,
+            bid1: 0.0, bid_vol1: 0.0, bid2: 0.0, bid_vol2: 0.0, bid3: 0.0, bid_vol3: 0.0,
+            bid4: 0.0, bid_vol4: 0.0, bid5: 0.0, bid_vol5: 0.0,
+            ask1: 0.0, ask_vol1: 0.0, ask2: 0.0, ask_vol2: 0.0, ask3: 0.0, ask_vol3: 0.0,
+            ask4: 0.0, ask_vol4: 0.0, ask5: 0.0, ask_vol5: 0.0,
+            reversed_bytes0: 0, reversed_bytes1: 0, reversed_bytes2: 0, reversed_bytes3: 0,
+            reversed_bytes4: 0, reversed_bytes5: 0, reversed_bytes6: 0, reversed_bytes7: 0,
+            reversed_bytes8: 0, reversed_bytes9: 0,
+            active2: 0,
+        }
+    }
+
+    #[test]
+    fn test_filter_quotes_drops_unrequested() {
+        // 服务器对无效代码回错位记录: 请求 999999 却解出 (1,"600839")
+        let requested = [(0u8, "000001"), (0u8, "999999")];
+        let records = vec![test_quote(0, "000001"), test_quote(1, "600839")];
+        let kept = filter_quotes_by_request(&requested, records);
+        assert_eq!(kept.len(), 1);
+        assert_eq!(kept[0].code, "000001");
+    }
+
+    #[test]
+    fn test_filter_quotes_dedupes() {
+        let requested = [(0u8, "000001")];
+        let records = vec![test_quote(0, "000001"), test_quote(0, "000001")];
+        let kept = filter_quotes_by_request(&requested, records);
+        assert_eq!(kept.len(), 1);
+    }
+
+    #[test]
+    fn test_filter_quotes_keeps_all_valid() {
+        let requested = [(0u8, "000001"), (1u8, "600519")];
+        let records = vec![test_quote(0, "000001"), test_quote(1, "600519")];
+        let kept = filter_quotes_by_request(&requested, records);
+        assert_eq!(kept.len(), 2);
     }
 }

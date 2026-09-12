@@ -1049,7 +1049,8 @@ impl TdxHqClient {
         }
 
         let body = self.send_and_recv(&packet)?;
-        parse_security_quotes(&body)
+        let quotes = parse_security_quotes(&body)?;
+        Ok(filter_quotes_by_request(all_stock, quotes))
     }
 
     /// 获取证券列表 (带缓存)
