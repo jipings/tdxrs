@@ -625,25 +625,24 @@ def cmd_parse(args):
 
     elif ftype == "block":
         reader = BlockReader()
-        data = reader.parse_data_group(filepath.read_bytes(), str(filepath))
+        # parse_data_group 只接受 data 一个参数（此前误传 2 个必 TypeError），
+        # 返回键为 blockname/block_type/stock_count/code_list（此前误用 code/name）
+        data = reader.parse_data_group(filepath.read_bytes())
         columns = [
-            ("代码", "代码", 8),
-            ("名称", "名称", 12),
+            ("板块名", "板块名", 14),
+            ("类型", "类型", 6),
+            ("成分数", "成分数", 8),
+            ("成分代码", "成分代码", 36),
         ]
         rows = []
-        if isinstance(data, dict):
-            for group_name, stocks in data.items():
-                for s in (stocks or []):
-                    rows.append({
-                        "代码": s.get("code", ""),
-                        "名称": truncate(s.get("name", ""), 12),
-                    })
-        else:
-            for s in (data or []):
-                rows.append({
-                    "代码": s.get("code", ""),
-                    "名称": truncate(s.get("name", ""), 12),
-                })
+        for s in (data or []):
+            codes = str(s.get("code_list", ""))
+            rows.append({
+                "板块名": truncate(s.get("blockname", ""), 14),
+                "类型": s.get("block_type", ""),
+                "成分数": s.get("stock_count", 0),
+                "成分代码": truncate(codes[:33] + "..." if len(codes) > 36 else codes, 36),
+            })
     else:
         print(f"error: 不支持的文件类型 '{ftype}'", file=sys.stderr)
         sys.exit(1)
