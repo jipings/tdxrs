@@ -119,9 +119,11 @@ impl TdxHqClient {
         }
 
         // 0.5) 优先尝试上次成功的服务器
+        // 注意: 必须先 clone 取走值并释放锁守卫再连接 —— connect_internal 内部
+        // 会再次写 last_server，非重入 Mutex 持锁调用将永久自死锁（CODE_REVIEW P0-1）
         {
-            let last = self.last_server.lock().unwrap();
-            if let Some((ref ip, port)) = *last {
+            let last = self.last_server.lock().unwrap().clone();
+            if let Some((ref ip, port)) = last {
                 if !self.is_server_blocked(ip, port) {
                     if let Ok(true) = self.connect_internal(ip, port, timeout, false) { return Ok(true) }
                 }
