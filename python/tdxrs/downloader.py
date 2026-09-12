@@ -59,6 +59,32 @@ _CATEGORY_MAP = {
     "min60":   (KLINE_1HOUR,   "min60",  800),
 }
 
+# 数字周期/市场代码别名 — 与 Rust 层 TDX category 编号对齐
+# (9 与 4 同为日K；7/8 为1分钟、10/11 为季/年，_CATEGORY_MAP 未支持，不映射)
+_CATEGORY_ALIASES = {0: "min5", 1: "min15", 2: "min30", 3: "min60",
+                     4: "daily", 9: "daily", 5: "weekly", 6: "monthly"}
+_MARKET_ALIASES = {MARKET_SZ: "sz", MARKET_SH: "sh"}
+
+
+def _normalize_categories(categories):
+    """接受字符串名或 TDX 数字周期编号，统一为字符串名"""
+    out = []
+    for c in categories:
+        if isinstance(c, int) and not isinstance(c, bool):
+            c = _CATEGORY_ALIASES.get(c, c)
+        out.append(c)
+    return out
+
+
+def _normalize_markets(markets):
+    """接受字符串名或数字市场代码 (0=SZ, 1=SH)，统一为字符串名"""
+    out = []
+    for m in markets:
+        if isinstance(m, int) and not isinstance(m, bool):
+            m = _MARKET_ALIASES.get(m, m)
+        out.append(m)
+    return out
+
 # 默认服务器列表 (与 Rust PRIMARY_SERVERS 一致)
 # 2026-09-13 实测: 安信/国泰君安 8 台为全功能站点 (K线/行情/逐笔全通)；
 # 海通/广发/华林/杭州电信等仅逐笔族命令可用，K线/行情返回空，只作兜底。
@@ -265,6 +291,9 @@ class Downloader:
             markets = ["sh", "sz"]
         if categories is None:
             categories = ["daily"]
+        # 接受数字周期编号 (如 9=日K) 与数字市场代码 (0=sz, 1=sh)
+        categories = _normalize_categories(categories)
+        markets = _normalize_markets(markets)
 
         market_map = {"sh": MARKET_SH, "sz": MARKET_SZ, "bj": MARKET_BJ}
 
@@ -725,6 +754,7 @@ class Downloader:
             return
         if markets is None:
             markets = ["sh", "sz"]
+        markets = _normalize_markets(markets)
         market_map = {"sh": MARKET_SH, "sz": MARKET_SZ}
 
         for market_name in markets:
@@ -779,6 +809,7 @@ class Downloader:
             return
         if markets is None:
             markets = ["sh", "sz"]
+        markets = _normalize_markets(markets)
         market_map = {"sh": MARKET_SH, "sz": MARKET_SZ}
 
         for market_name in markets:
