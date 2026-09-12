@@ -22,6 +22,8 @@ impl BlockType {
     }
 
     /// 从字符串解析
+    // 非标准 FromStr 语义 (返回 Option 而非 Result)，保持既有 API
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "index" | "zs" | "指数" => Some(BlockType::Index),

@@ -134,6 +134,8 @@ impl PyAsyncTdxHqClient {
     // K线 — dict 输出
     // ============================================================
 
+    #[allow(clippy::too_many_arguments)]
+    // 协议参数天然超过 7 个，签名与底层一致
     /// 获取K线数据
     ///
     /// fq: 复权类型, 0=未复权 1=前复权(默认) 2=后复权
@@ -209,6 +211,8 @@ impl PyAsyncTdxHqClient {
         Ok(list.into())
     }
 
+    #[allow(clippy::too_many_arguments)]
+    // 协议参数天然超过 7 个，签名与底层一致
     /// 获取指数K线
     #[pyo3(signature = (category, market, code, start=0, count=800, fq=1))]
     fn get_index_bars(
@@ -591,6 +595,8 @@ impl PyAsyncTdxHqClient {
     // Tuple 高性能输出
     // ============================================================
 
+    #[allow(clippy::too_many_arguments)]
+    // 协议参数天然超过 7 个，签名与底层一致
     /// 获取K线数据, 返回 list of tuple (高性能模式)
     /// tuple: (open, close, high, low, vol, amount, year, month, day, hour, minute, datetime)
     #[pyo3(signature = (category, market, code, start=0, count=800, fq=1))]
@@ -631,6 +637,8 @@ impl PyAsyncTdxHqClient {
         Ok(list.into())
     }
 
+    #[allow(clippy::too_many_arguments)]
+    // 协议参数天然超过 7 个，签名与底层一致
     /// 获取指数K线, 返回 list of tuple (高性能模式)
     #[pyo3(signature = (category, market, code, start=0, count=800, fq=1))]
     fn get_index_bars_tuples(
@@ -730,6 +738,8 @@ impl PyAsyncTdxHqClient {
     // DataFrame 输出
     // ============================================================
 
+    #[allow(clippy::too_many_arguments)]
+    // 协议参数天然超过 7 个，签名与底层一致
     /// 获取K线数据, 返回 pandas DataFrame
     #[pyo3(signature = (category, market, code, start=0, count=800, fq=1))]
     fn get_security_bars_dataframe(
@@ -749,6 +759,8 @@ impl PyAsyncTdxHqClient {
         crate::python::py_dataframe::security_bars_to_df(py, &bars)
     }
 
+    #[allow(clippy::too_many_arguments)]
+    // 协议参数天然超过 7 个，签名与底层一致
     /// 获取指数K线, 返回 pandas DataFrame
     #[pyo3(signature = (category, market, code, start=0, count=800, fq=1))]
     fn get_index_bars_dataframe(

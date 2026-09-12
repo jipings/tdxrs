@@ -13,7 +13,6 @@ use crate::protocol::constants::*;
 use crate::protocol::parsers::*;
 use crate::protocol::types::*;
 use crate::loge;
-use crate::logw;
 
 /// 裸连接客户端
 ///
@@ -145,13 +144,13 @@ impl TdxDirectClient {
         let earliest_event = xdxr
             .iter()
             .filter(|x| x.category == 1)
-            .map(|x| x.year as u32 * 10000 + x.month as u32 * 100 + x.day as u32)
+            .map(|x| x.year * 10000 + x.month * 100 + x.day)
             .min();
 
         let Some(ee_date) = earliest_event else { return Ok(Vec::new()) };
 
         let first_bar_date =
-            bars[0].year as u32 * 10000 + bars[0].month as u32 * 100 + bars[0].day as u32;
+            bars[0].year * 10000 + bars[0].month * 100 + bars[0].day;
 
         if first_bar_date <= ee_date {
             return Ok(Vec::new());

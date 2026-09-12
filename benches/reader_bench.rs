@@ -1,5 +1,4 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use std::fs;
 
 fn bench_daily_bar_parse(c: &mut Criterion) {
     // 构造测试数据: 1000条日线记录

@@ -26,10 +26,12 @@ use crate::protocol::types::{SecurityBar, XdXrInfo};
 /// | Mid  | 4800 | ~20 年 (默认) |
 /// | High | 7200 | ~30 年 |
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum FqContextTier {
     /// 约 10 年 (3 页 × 800 根)
     Low = 2400,
     /// 约 20 年 (6 页 × 800 根) — 默认
+    #[default]
     Mid = 4800,
     /// 约 30 年 (9 页 × 800 根)
     High = 7200,
@@ -42,11 +44,6 @@ impl FqContextTier {
     }
 }
 
-impl Default for FqContextTier {
-    fn default() -> Self {
-        FqContextTier::Mid
-    }
-}
 
 // ================================================================
 // 交易阶段检测
@@ -88,7 +85,7 @@ pub fn detect_trading_phase() -> TradingPhase {
     }
 
     // UTC+8: 9:30 = 1:30 UTC = 5400s, 15:00 = 7:00 UTC = 25200s
-    if day_sec >= 5400 && day_sec <= 25200 {
+    if (5400..=25200).contains(&day_sec) {
         TradingPhase::Trading
     } else {
         TradingPhase::PrePost
@@ -427,13 +424,13 @@ pub fn fetch_context_bars_for_adjust_with_tier<F: Fn(&[u8]) -> Result<Vec<u8>>>(
     let earliest_event = xdxr
         .iter()
         .filter(|x| x.category == 1)
-        .map(|x| x.year as u32 * 10000 + x.month as u32 * 100 + x.day as u32)
+        .map(|x| x.year * 10000 + x.month * 100 + x.day)
         .min();
 
     let Some(ee_date) = earliest_event else { return Vec::new() };
 
     let first_bar_date =
-        bars[0].year as u32 * 10000 + bars[0].month as u32 * 100 + bars[0].day as u32;
+        bars[0].year * 10000 + bars[0].month * 100 + bars[0].day;
 
     if first_bar_date <= ee_date {
         return Vec::new();

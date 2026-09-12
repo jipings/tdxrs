@@ -121,7 +121,7 @@ pub fn parse_security_bars(body: &[u8], category: u8) -> Result<Vec<SecurityBar>
         let (year, month, day, hour, minute, new_pos) = get_datetime(category, body, pos);
         // 校验日期合法性 — 服务器可能返回损坏数据或无效代码的垃圾数据
         // 无效日期时截断返回已有结果，而非报错
-        if year < 1980 || year > max_valid_year() || month < 1 || month > 12 || day < 1 || day > 31 {
+        if year < 1980 || year > max_valid_year() || !(1..=12).contains(&month) || !(1..=31).contains(&day) {
             break;
         }
         bar.year = year;
@@ -216,7 +216,7 @@ pub fn parse_index_bars(body: &[u8], category: u8) -> Result<Vec<IndexBar>> {
         let (year, month, day, hour, minute, new_pos) = get_datetime(category, body, pos);
         // 校验日期合法性 — 服务器可能返回损坏数据或无效代码的垃圾数据
         // 无效日期时截断返回已有结果，而非报错
-        if year < 1980 || year > max_valid_year() || month < 1 || month > 12 || day < 1 || day > 31 {
+        if year < 1980 || year > max_valid_year() || !(1..=12).contains(&month) || !(1..=31).contains(&day) {
             break;
         }
         bar.year = year;

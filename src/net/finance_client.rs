@@ -265,7 +265,7 @@ impl TdxFinanceClient {
         let mut data = Vec::with_capacity(effective_size as usize);
         let mut offset = 0u32;
 
-        while (offset as u32) < effective_size {
+        while offset < effective_size {
             let chunk = self.get_report_file(filename, offset)?;
             if chunk.is_empty() {
                 break;

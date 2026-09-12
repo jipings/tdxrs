@@ -1,4 +1,4 @@
-/// F10 模块响应解析器
+//! F10 模块响应解析器
 
 use crate::error::{Result, TdxError};
 use super::constants::*;

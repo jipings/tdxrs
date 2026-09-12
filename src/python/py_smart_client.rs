@@ -41,6 +41,8 @@ impl PyTdxSmartClient {
             .map_err(|e| pyo3::exceptions::PyConnectionError::new_err(e.to_string()))
     }
 
+    #[allow(clippy::too_many_arguments)]
+    // 协议参数天然超过 7 个，签名与底层一致
     /// 获取 K 线数据 (带自动重试)
     ///
     /// 如果返回空数据，自动触发健康检查并尝试切换服务器。
@@ -78,7 +80,7 @@ impl PyTdxSmartClient {
             result.append(dict)?;
         }
 
-        Ok(result.into_py_any(py)?)
+        result.into_py_any(py)
     }
 
     /// 获取实时行情 (带自动重试)
@@ -133,14 +135,14 @@ impl PyTdxSmartClient {
             dict.set_item("ask5", q.ask5)?;
             dict.set_item("bid_vol5", q.bid_vol5)?;
             dict.set_item("ask_vol5", q.ask_vol5)?;
-            dict.set_item("reversed_bytes0", &q.reversed_bytes0)?;
-            dict.set_item("reversed_bytes1", &q.reversed_bytes1)?;
-            dict.set_item("reversed_bytes2", &q.reversed_bytes2)?;
+            dict.set_item("reversed_bytes0", q.reversed_bytes0)?;
+            dict.set_item("reversed_bytes1", q.reversed_bytes1)?;
+            dict.set_item("reversed_bytes2", q.reversed_bytes2)?;
             dict.set_item("active2", q.active2)?;
             result.append(dict)?;
         }
 
-        Ok(result.into_py_any(py)?)
+        result.into_py_any(py)
     }
 
     /// 获取缓存统计信息

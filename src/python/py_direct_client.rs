@@ -58,6 +58,8 @@ impl PyTdxDirectClient {
     // K线
     // ============================================================
 
+    #[allow(clippy::too_many_arguments)]
+    // 协议参数天然超过 7 个，签名与底层一致
     #[pyo3(signature = (category, market, code, start=0, count=800, fq=1))]
     fn get_security_bars(
         &self, py: Python<'_>, category: u8, market: u8, code: &str,
@@ -83,6 +85,8 @@ impl PyTdxDirectClient {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
+    // 协议参数天然超过 7 个，签名与底层一致
     #[pyo3(signature = (category, market, code, start=0, count=800, fq=1))]
     fn get_index_bars(
         &self, py: Python<'_>, category: u8, market: u8, code: &str,

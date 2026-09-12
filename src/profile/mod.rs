@@ -23,7 +23,6 @@
 /// }
 /// # Ok::<(), Box<dyn std::error::Error>>
 /// ```
-
 pub mod client;
 pub mod constants;
 pub mod parser;

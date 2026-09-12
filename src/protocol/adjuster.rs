@@ -183,7 +183,7 @@ fn find_close_before_event(
     // bars 中找 (正向迭代, 取最后一个日期 < date_key 的)
     if let Some(bar) = bars
         .iter()
-        .take_while(|b| b.year as u32 * 10000 + b.month as u32 * 100 + (b.day as u32) < date_key)
+        .take_while(|b| b.year * 10000 + b.month * 100 + b.day < date_key)
         .last()
     {
         return Some(bar.close);
@@ -192,7 +192,7 @@ fn find_close_before_event(
     context_bars
         .iter()
         .rev()
-        .find(|b| b.year as u32 * 10000 + b.month as u32 * 100 + (b.day as u32) < date_key)
+        .find(|b| b.year * 10000 + b.month * 100 + b.day < date_key)
         .map(|b| b.close)
 }
 

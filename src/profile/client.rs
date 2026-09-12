@@ -1,4 +1,4 @@
-/// F10 公司资料客户端
+//! F10 公司资料客户端
 
 use crate::error::Result;
 use crate::net::client::TdxHqClient;

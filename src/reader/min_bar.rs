@@ -44,7 +44,7 @@ pub struct LcMinBarRecord {
 pub fn parse_min_bar(data: &[u8]) -> Result<Vec<MinBarRecord>> {
     const RECORD_SIZE: usize = 32;
 
-    if data.len() % RECORD_SIZE != 0 {
+    if !data.len().is_multiple_of(RECORD_SIZE) {
         return Err(TdxError::InvalidData(format!(
             "Min bar file size {} is not a multiple of {}",
             data.len(),
@@ -93,7 +93,7 @@ pub fn parse_min_bar(data: &[u8]) -> Result<Vec<MinBarRecord>> {
 pub fn parse_lc_min_bar(data: &[u8]) -> Result<Vec<LcMinBarRecord>> {
     const RECORD_SIZE: usize = 32;
 
-    if data.len() % RECORD_SIZE != 0 {
+    if !data.len().is_multiple_of(RECORD_SIZE) {
         return Err(TdxError::InvalidData(format!(
             "LC min bar file size {} is not a multiple of {}",
             data.len(),
@@ -156,7 +156,7 @@ mod tests {
     #[test]
     fn test_parse_min_bar() {
         // 构造一条测试记录: 2024-01-15 09:35, open=10.50, high=10.80, low=10.30, close=10.60
-        let date_num: u16 = ((2024 - 2004) * 2048 + 1 * 100 + 15) as u16;
+        let date_num: u16 = ((2024 - 2004) * 2048 + 100 + 15) as u16;
         let time_num: u16 = 9 * 60 + 35; // 575 minutes
         let open: u32 = 1050; // 10.50 * 100
         let high: u32 = 1080;
@@ -190,7 +190,7 @@ mod tests {
     #[test]
     fn test_parse_lc_min_bar() {
         // 浮点格式: 2024-01-15 09:35, open=10.50 (直接浮点)
-        let date_num: u16 = ((2024 - 2004) * 2048 + 1 * 100 + 15) as u16;
+        let date_num: u16 = ((2024 - 2004) * 2048 + 100 + 15) as u16;
         let time_num: u16 = 575;
         let open: f32 = 10.50;
         let high: f32 = 10.80;

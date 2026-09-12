@@ -51,6 +51,12 @@ pub fn index_code_to_name(code: &str) -> Option<&'static str> {
 /// 板块查询引擎
 pub struct BlockQuery;
 
+impl Default for BlockQuery {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BlockQuery {
     pub const fn new() -> Self {
         Self

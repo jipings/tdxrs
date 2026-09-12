@@ -1,4 +1,4 @@
-/// F10 公司资料 Python 绑定
+//! F10 公司资料 Python 绑定
 
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};

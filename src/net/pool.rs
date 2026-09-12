@@ -13,11 +13,14 @@ struct PooledConnection {
 }
 
 /// 连接池配置
+/// 连接握手回调类型
+pub type HandshakeFn = Box<dyn Fn(&mut TcpConnection) -> Result<()> + Send + Sync>;
+
 pub struct PoolConfig {
     pub max_size: usize,
     pub connect_timeout: f64,
     /// 握手回调: 新建连接后执行 (setup commands)
-    pub handshake_fn: Option<Box<dyn Fn(&mut TcpConnection) -> Result<()> + Send + Sync>>,
+    pub handshake_fn: Option<HandshakeFn>,
 }
 
 impl PoolConfig {

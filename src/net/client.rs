@@ -49,7 +49,14 @@ pub struct TdxHqClient {
     fq_context_tier: AtomicU8,
 }
 
+impl Default for TdxHqClient {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TdxHqClient {
+    #[allow(clippy::field_reassign_with_default)]
     pub fn new() -> Self {
         let mut config = PoolConfig::default();
         // 设置握手回调，让连接池自动为新连接执行握手
@@ -116,10 +123,7 @@ impl TdxHqClient {
             let last = self.last_server.lock().unwrap();
             if let Some((ref ip, port)) = *last {
                 if !self.is_server_blocked(ip, port) {
-                    match self.connect_internal(ip, port, timeout, false) {
-                        Ok(true) => return Ok(true),
-                        _ => {}
-                    }
+                    if let Ok(true) = self.connect_internal(ip, port, timeout, false) { return Ok(true) }
                 }
             }
         }
@@ -837,14 +841,14 @@ impl TdxHqClient {
         let earliest_event = xdxr
             .iter()
             .filter(|x| x.category == 1)
-            .map(|x| x.year as u32 * 10000 + x.month as u32 * 100 + x.day as u32)
+            .map(|x| x.year * 10000 + x.month * 100 + x.day)
             .min();
 
         let Some(ee_date) = earliest_event else { return Ok(Vec::new()) };
 
         // 检查是否需要上下文
         let first_bar_date =
-            bars[0].year as u32 * 10000 + bars[0].month as u32 * 100 + bars[0].day as u32;
+            bars[0].year * 10000 + bars[0].month * 100 + bars[0].day;
 
         if first_bar_date <= ee_date {
             return Ok(Vec::new());

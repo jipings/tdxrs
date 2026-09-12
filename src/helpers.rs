@@ -44,11 +44,11 @@ pub fn get_volume(vol: i64) -> f64 {
     if vol == 0 {
         return 0.0;
     }
-    let logpoint = (vol >> (8 * 3)) as i64;
+    let logpoint = vol >> (8 * 3);
 
-    let hleax = ((vol >> (8 * 2)) & 0xFF) as i64;
-    let lheax = ((vol >> 8) & 0xFF) as i64;
-    let lleax = (vol & 0xFF) as i64;
+    let hleax = (vol >> (8 * 2)) & 0xFF;
+    let lheax = (vol >> 8) & 0xFF;
+    let lleax = vol & 0xFF;
 
     let dw_ecx = logpoint * 2 - 0x7F;
     let dw_edx = logpoint * 2 - 0x86;
@@ -64,9 +64,9 @@ pub fn get_volume(vol: i64) -> f64 {
     let dbl_xmm4 = if hleax > 0x80 {
         let dwtmpeax = dw_edx + 1;
         let tmpdbl_xmm3 = 2.0_f64.powi(dwtmpeax as i32);
-        let dbl_xmm0 = 2.0_f64.powi(dw_edx as i32) * 128.0
-            + (hleax & 0x7F) as f64 * tmpdbl_xmm3;
-        dbl_xmm0
+        
+        2.0_f64.powi(dw_edx as i32) * 128.0
+            + (hleax & 0x7F) as f64 * tmpdbl_xmm3
     } else {
         if dw_edx >= 0 {
             2.0_f64.powi(dw_edx as i32) * hleax as f64

@@ -26,7 +26,6 @@ use std::io::Read;
 use tokio::sync::{mpsc, oneshot, Mutex};
 
 use crate::error::{Result, TdxError};
-use crate::logw;
 use crate::net::packet::{ResponseHeader, RSP_HEADER_LEN};
 use crate::net::utils::{self, TradingPhase};
 use crate::protocol::constants::*;
@@ -242,6 +241,12 @@ pub struct AsyncTdxHqClient {
     fq_context_tier: AtomicU8,
 }
 
+impl Default for AsyncTdxHqClient {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AsyncTdxHqClient {
     pub fn new() -> Self {
         Self::with_pool_size(DEFAULT_POOL_SIZE)
@@ -391,10 +396,7 @@ impl AsyncTdxHqClient {
                             false
                         } else {
                             // 等待响应 (带超时)
-                            match tokio::time::timeout(Duration::from_secs(5), reply_rx).await {
-                                Ok(Ok(Ok(_))) => true,
-                                _ => false,
-                            }
+                            matches!(tokio::time::timeout(Duration::from_secs(5), reply_rx).await, Ok(Ok(Ok(_))))
                         }
                     }
                 };
@@ -427,7 +429,7 @@ impl AsyncTdxHqClient {
 
         // 第一次尝试
         match self.try_send(packet).await {
-            Ok(body) => return Ok(body),
+            Ok(body) => Ok(body),
             Err(e) => {
                 // 重试
                 for (i, &interval) in RETRY_INTERVALS.iter().enumerate() {
@@ -501,13 +503,13 @@ impl AsyncTdxHqClient {
         let earliest_event = xdxr
             .iter()
             .filter(|x| x.category == 1)
-            .map(|x| x.year as u32 * 10000 + x.month as u32 * 100 + x.day as u32)
+            .map(|x| x.year * 10000 + x.month * 100 + x.day)
             .min();
 
         let Some(ee_date) = earliest_event else { return Vec::new() };
 
         let first_bar_date =
-            bars[0].year as u32 * 10000 + bars[0].month as u32 * 100 + bars[0].day as u32;
+            bars[0].year * 10000 + bars[0].month * 100 + bars[0].day;
 
         if first_bar_date <= ee_date {
             return Vec::new();

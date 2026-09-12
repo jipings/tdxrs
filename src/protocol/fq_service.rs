@@ -54,7 +54,7 @@ impl FqService {
         }
 
         // XDXR 已按日期升序，第一个即最早记录 (O(1))
-        let earliest_year = xdxr_list[0].year as u32;
+        let earliest_year = xdxr_list[0].year;
         let years_back = current_year.saturating_sub(earliest_year);
 
         match years_back {

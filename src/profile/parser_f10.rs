@@ -1,7 +1,7 @@
-/// F10 文本解析器
-///
-/// 解析通达信 F10 原始文本，提取结构化数据。
-/// 基于港澳资讯格式，兼容不同公司的 F10 数据差异。
+//! F10 文本解析器
+//!
+//! 解析通达信 F10 原始文本，提取结构化数据。
+//! 基于港澳资讯格式，兼容不同公司的 F10 数据差异。
 
 use std::collections::HashMap;
 use regex::Regex;
@@ -189,7 +189,7 @@ impl F10TextParser {
                 if ch == '|' || ch == '\u{FF5C}' || ch == '\u{2502}' {
                     // 找到竖线，提取后面的内容直到下一个竖线
                     let value_part = &after_field[i + ch.len_utf8()..];
-                    let value = value_part.split(|c: char| c == '|' || c == '\u{FF5C}' || c == '\u{2502}' || c == '\n')
+                    let value = value_part.split(['|', '\u{FF5C}', '\u{2502}', '\n'])
                         .next()
                         .unwrap_or("")
                         .trim();

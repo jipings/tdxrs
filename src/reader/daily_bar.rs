@@ -29,7 +29,7 @@ pub struct DailyBarRecord {
 pub fn parse_daily_bar(data: &[u8], coefficient: f64) -> Result<Vec<DailyBarRecord>> {
     const RECORD_SIZE: usize = 32;
 
-    if data.len() % RECORD_SIZE != 0 {
+    if !data.len().is_multiple_of(RECORD_SIZE) {
         return Err(TdxError::InvalidData(format!(
             "Daily bar file size {} is not a multiple of {}",
             data.len(),
@@ -83,7 +83,7 @@ mod tests {
     fn test_parse_daily_bar() {
         // 构造一条测试记录: 2024-01-15, open=10.50, high=10.80, low=10.30, close=10.60
         // date = (2024-2004)*2048 + 1*100 + 15 = 36979
-        let date_num: u32 = (2024 - 2004) * 2048 + 1 * 100 + 15; // = 36979
+        let date_num: u32 = (2024 - 2004) * 2048 + 100 + 15; // = 36979
         let open: u32 = 1050; // 10.50 * 100
         let high: u32 = 1080;
         let low: u32 = 1030;

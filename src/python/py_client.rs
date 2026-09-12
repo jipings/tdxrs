@@ -186,6 +186,8 @@ impl PyTdxHqClient {
         Ok(dict.into())
     }
 
+    #[allow(clippy::too_many_arguments)]
+    // 协议参数天然超过 7 个，签名与底层一致
     /// 获取K线数据
     ///
     /// fq: 复权类型, 0=未复权 1=前复权(默认) 2=后复权
@@ -265,6 +267,8 @@ impl PyTdxHqClient {
         Ok(list.into())
     }
 
+    #[allow(clippy::too_many_arguments)]
+    // 协议参数天然超过 7 个，签名与底层一致
     /// 获取指数K线
     #[pyo3(signature = (category, market, code, start=0, count=800, fq=1))]
     fn get_index_bars(
@@ -647,6 +651,8 @@ impl PyTdxHqClient {
         Ok(list.into())
     }
 
+    #[allow(clippy::too_many_arguments)]
+    // 协议参数天然超过 7 个，签名与底层一致
     /// 获取K线数据，返回 list of tuple (高性能模式)
     /// tuple: (open, close, high, low, vol, amount, year, month, day, hour, minute, datetime)
     #[pyo3(signature = (category, market, code, start=0, count=800, fq=1))]
@@ -681,6 +687,8 @@ impl PyTdxHqClient {
         Ok(list.into())
     }
 
+    #[allow(clippy::too_many_arguments)]
+    // 协议参数天然超过 7 个，签名与底层一致
     /// 获取指数K线，返回 list of tuple (高性能模式)
     /// tuple: (open, close, high, low, vol, amount, year, month, day, hour, minute, datetime, up_count, down_count)
     #[pyo3(signature = (category, market, code, start=0, count=800, fq=1))]
@@ -759,6 +767,8 @@ impl PyTdxHqClient {
     // DataFrame 输出 (列式, 高性能)
     // ============================================================
 
+    #[allow(clippy::too_many_arguments)]
+    // 协议参数天然超过 7 个，签名与底层一致
     /// 获取K线数据, 返回 pandas DataFrame
     #[pyo3(signature = (category, market, code, start=0, count=800, fq=1))]
     fn get_security_bars_dataframe(
@@ -771,6 +781,8 @@ impl PyTdxHqClient {
         crate::python::py_dataframe::security_bars_to_df(py, &bars)
     }
 
+    #[allow(clippy::too_many_arguments)]
+    // 协议参数天然超过 7 个，签名与底层一致
     /// 获取指数K线, 返回 pandas DataFrame
     #[pyo3(signature = (category, market, code, start=0, count=800, fq=1))]
     fn get_index_bars_dataframe(

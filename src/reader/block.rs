@@ -176,7 +176,7 @@ mod tests {
 
         // Pad to 2800
         let padding = BLOCK_STOCK_AREA - 2 * CODE_SIZE;
-        data.extend(std::iter::repeat(0u8).take(padding));
+        data.extend(std::iter::repeat_n(0u8, padding));
 
         data
     }
