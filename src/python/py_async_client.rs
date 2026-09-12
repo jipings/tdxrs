@@ -27,6 +27,10 @@ fn to_py_err(e: TdxError) -> PyErr {
 /// 内部持有独立 tokio Runtime，底层使用通道化连接池实现并发。
 /// API 与 `TdxHqClient` 完全一致。
 ///
+/// 注意: "Async" 指内部实现，Python 侧 API 是**同步**的——
+/// 方法直接返回结果而非 coroutine，不要 await（会 TypeError）。
+/// 适合在同步代码中获得内部并发收益，不能用于 asyncio 生态。
+///
 /// ```python
 /// from tdxrs._internal import AsyncTdxHqClient
 ///
