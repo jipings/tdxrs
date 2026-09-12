@@ -277,18 +277,27 @@ impl TdxDirectClient {
     /// 获取实时行情 (内部方法，跳过板块代码检查)
     ///
     /// 供 TdxBlockClient 调用，板块代码 (88xxxx) 需要通过此方法查询。
+    /// 支持任意数量：内部按单批上限自动分批请求并合并结果。
     pub(crate) fn get_security_quotes_inner(
         &self,
         all_stock: &[(u8, &str)],
     ) -> Result<Vec<SecurityQuote>> {
-        // 服务端上限截断
-        let all_stock = if all_stock.len() > MAX_QUOTES_COUNT {
-            logw!("direct", "批量行情查询超过上限 {}/{}，自动截断。请自行分组调用。",
-                  all_stock.len(), MAX_QUOTES_COUNT);
-            &all_stock[..MAX_QUOTES_COUNT]
-        } else {
-            all_stock
-        };
+        if all_stock.len() <= MAX_QUOTES_COUNT {
+            return self.get_security_quotes_inner_batch(all_stock);
+        }
+        let mut result = Vec::with_capacity(all_stock.len());
+        for chunk in all_stock.chunks(MAX_QUOTES_COUNT) {
+            result.extend(self.get_security_quotes_inner_batch(chunk)?);
+        }
+        Ok(result)
+    }
+
+    /// 单批实时行情查询（不超过 MAX_QUOTES_COUNT 只，跳过板块代码检查）
+    fn get_security_quotes_inner_batch(
+        &self,
+        all_stock: &[(u8, &str)],
+    ) -> Result<Vec<SecurityQuote>> {
+        debug_assert!(all_stock.len() <= MAX_QUOTES_COUNT);
         let stock_len = all_stock.len() as u16;
         let pkgdatalen = (stock_len as u32) * 7 + 12;
         let mut pkt = Vec::with_capacity(26 + stock_len as usize * 7);

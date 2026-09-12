@@ -654,19 +654,28 @@ impl AsyncTdxHqClient {
 
     /// 获取实时行情 (批量)
     ///
-    /// 单次查询上限 60 只 (TDX 服务端硬限制)，超出自动截断并打印警告。
+    /// 支持任意数量的标的：内部按单批上限 MAX_QUOTES_COUNT 自动分批
+    /// 请求并合并结果，调用方无需自行分组。
     pub async fn get_security_quotes(
         &self,
         all_stock: &[(u8, &str)],
     ) -> Result<Vec<SecurityQuote>> {
-        // 服务端上限截断
-        let all_stock = if all_stock.len() > MAX_QUOTES_COUNT {
-            logw!("async_hq", "批量行情查询超过上限 {}/{}，自动截断。请自行分组调用。",
-                  all_stock.len(), MAX_QUOTES_COUNT);
-            &all_stock[..MAX_QUOTES_COUNT]
-        } else {
-            all_stock
-        };
+        if all_stock.len() <= MAX_QUOTES_COUNT {
+            return self.get_security_quotes_batch(all_stock).await;
+        }
+        let mut result = Vec::with_capacity(all_stock.len());
+        for chunk in all_stock.chunks(MAX_QUOTES_COUNT) {
+            result.extend(self.get_security_quotes_batch(chunk).await?);
+        }
+        Ok(result)
+    }
+
+    /// 单批实时行情查询（不超过 MAX_QUOTES_COUNT 只）
+    async fn get_security_quotes_batch(
+        &self,
+        all_stock: &[(u8, &str)],
+    ) -> Result<Vec<SecurityQuote>> {
+        debug_assert!(all_stock.len() <= MAX_QUOTES_COUNT);
         let stock_len = all_stock.len() as u16;
         let pkgdatalen = (stock_len as u32) * 7 + 12;
 

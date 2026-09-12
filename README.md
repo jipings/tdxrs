@@ -24,11 +24,26 @@ client.connect_to_any()
 df = client.get_security_bars_dataframe(KLINE_DAILY, MARKET_SH, "600519", 0, 500)
 df["ma20"] = df["close"].rolling(20).mean()
 
-# 批量实时行情 (上限 60 只/次)
+# 批量实时行情 (任意数量，内部自动分批)
 quotes = client.get_security_quotes([
     (MARKET_SH, "600519"), (0, "000858"), (0, "300750")
 ])
 ```
+
+---
+
+## 与 pytdx 的差异（迁移注意）
+
+从 pytdx 迁移时需要注意以下行为差异（均为有意设计）：
+
+| 项 | tdxrs | pytdx |
+|---|---|---|
+| `get_security_quotes` 批量数量 | **任意数量**，内部按 60 只/批自动分批请求并合并 | 上限 80 只，超出丢弃 |
+| 无效/退市代码 | 响应按请求代码过滤，无效代码返回空并记 warning | 整包丢弃（有效记录一并丢失） |
+| 日K及以上周期 `datetime` | 纯日期 `'2026-09-09'`（周/月/季/年同） | 带固定时间 `'2026-09-09 15:00'` |
+| `get_finance_info` 股本字段单位 | **万股**（金额字段仍为元） | 股（相差 1 万倍） |
+| 闭市后当日分时/分笔 | 返回空列表 | 返回 240 条 price=0 的占位记录 |
+| `servertime` 格式 | `'15:29:52.962'`（毫秒换算后） | 同左 |
 
 ---
 
