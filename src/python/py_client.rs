@@ -189,6 +189,10 @@ impl PyTdxHqClient {
     /// 获取K线数据
     ///
     /// fq: 复权类型, 0=未复权 1=前复权(默认) 2=后复权
+    ///
+    /// 注意: 后复权(fq=2)锚定近期基准，绝对值与 tushare/通达信的
+    /// hfq（上市日累计 adj_factor 口径）相差一个固定倍数，不可直接
+    /// 混用；涨跌幅序列一致。前复权(fq=1)已对 tushare qfq 逐值验证。
     #[pyo3(signature = (category, market, code, start=0, count=800, fq=1))]
     fn get_security_bars(
         &self,
