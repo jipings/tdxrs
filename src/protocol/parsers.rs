@@ -616,8 +616,10 @@ pub fn parse_security_quotes(body: &[u8]) -> Result<Vec<SecurityQuote>> {
     let mut result = Vec::with_capacity(count);
 
     for _ in 0..count {
-        // 边界保护: 每条记录至少需要 ~30 字节，不足则提前终止
-        if pos + 30 > body.len() {
+        // 边界保护: 单条记录最小约 34~56 字节（21 个 varint 各至少 1B +
+        // 定长字段 13B）。此前 30 字节的估计偏小，截断响应会走到下方
+        // 裸索引 panic (CODE_REVIEW P0-4)。取保守上界 56。
+        if pos + 56 > body.len() {
             break;
         }
 
@@ -729,7 +731,11 @@ pub fn parse_security_quotes(body: &[u8]) -> Result<Vec<SecurityQuote>> {
         pos = new_pos;
 
         // reversed_bytes9 (i16) + active2 (u16)
-        let reversed_bytes9 = i16::from_le_bytes([body[pos], body[pos + 1]]);
+        // 带检查读取：截断响应到此不足 2 字节时终止而非越界 panic (CODE_REVIEW P0-4)
+        let Some(rb9_bytes) = body.get(pos..pos + 2) else {
+            break;
+        };
+        let reversed_bytes9 = i16::from_le_bytes([rb9_bytes[0], rb9_bytes[1]]);
         pos += 2;
         let active2 = read_u16(body, pos);
         pos += 2;
