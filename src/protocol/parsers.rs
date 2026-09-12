@@ -539,6 +539,39 @@ pub fn parse_history_transaction_data_with_coefficient(body: &[u8], coefficient:
 }
 
 // ============================================================
+// 服务器时间戳格式化
+// ============================================================
+
+/// 格式化行情快照里的服务器时间戳 (reversed_bytes0 字段)
+///
+/// 解码算法与 pytdx 一致 (rainx/pytdx issue #187)：
+/// 十进制字符串前段为小时，随后 2 位为分钟，末 4 位为分钟内的小数部分，
+/// ×60/10000 得到秒 (例如 15298827 -> 15:29:52.962)；
+/// 分钟位 >= 60 时后 6 位视为小时的小数部分解码。
+/// 位长不足 8 的原样返回数字字符串 (与 pytdx 行为一致)。
+pub fn format_servertime(ts: u64) -> String {
+    let s = format!("{}", ts);
+    if s.len() < 8 {
+        return s;
+    }
+    let (hh, rest) = s.split_at(s.len() - 6);
+    let mm = &rest[..2];
+    if let (Ok(mm_v), Ok(tail_v)) = (mm.parse::<u32>(), rest[2..].parse::<u64>()) {
+        if mm_v < 60 {
+            return format!("{}:{}:{:06.3}", hh, mm_v, tail_v as f64 * 60.0 / 10000.0);
+        }
+    }
+    // 分钟位异常：后 6 位按小时的小数部分解码 (pytdx else 分支)
+    if let Ok(whole) = rest.parse::<u64>() {
+        let mins = whole * 60 / 1_000_000;
+        let secs = (whole * 60 % 1_000_000) as f64 * 60.0 / 1_000_000.0;
+        format!("{}:{:02}:{:06.3}", hh, mins, secs)
+    } else {
+        s
+    }
+}
+
+// ============================================================
 // 解析实时行情 (最复杂的解析器)
 // ============================================================
 
@@ -675,19 +708,7 @@ pub fn parse_security_quotes(body: &[u8]) -> Result<Vec<SecurityQuote>> {
         pos += 2;
 
         // format servertime from reversed_bytes0
-        let ts = reversed_bytes0 as u64;
-        let servertime = if ts == 0 {
-            format!("reversed_bytes0:{}", ts)
-        } else {
-            let ts_str = format!("{}", ts);
-            if ts_str.len() >= 8 {
-                let hhmm = &ts_str[..ts_str.len() - 6];
-                let mm_ss = &ts_str[ts_str.len() - 6..];
-                format!("{}:{}:{}", hhmm, &mm_ss[..2], &mm_ss[2..])
-            } else {
-                format!("{}", ts)
-            }
-        };
+        let servertime = format_servertime(reversed_bytes0 as u64);
 
         let price = (price_raw as f64) * coefficient;
         let last_close = ((price_raw + last_close_diff) as f64) * coefficient;
@@ -1310,5 +1331,33 @@ mod tests {
         let result = parse_block_info(&data).unwrap();
         assert_eq!(result.len(), 10);
         assert!(result.iter().all(|&b| b == 0x42));
+    }
+
+    // --- format_servertime ---
+
+    #[test]
+    fn test_servertime_normal() {
+        // pytdx issue #187 实例: 15298827 -> 15:29:52.962
+        assert_eq!(format_servertime(15298827), "15:29:52.962");
+    }
+
+    #[test]
+    fn test_servertime_small_seconds() {
+        // 末 4 位 0050 -> 0.300 秒, 补零到 6 位宽
+        assert_eq!(format_servertime(15290050), "15:29:00.300");
+    }
+
+    #[test]
+    fn test_servertime_short_value() {
+        // 位长不足 8: 原样返回数字字符串 (与 pytdx 一致)
+        assert_eq!(format_servertime(0), "0");
+        assert_eq!(format_servertime(123), "123");
+    }
+
+    #[test]
+    fn test_servertime_minute_overflow() {
+        // 分钟位 >= 60: 走小时小数分支, 至少保证格式合法不 panic
+        let s = format_servertime(15998827);
+        assert!(s.starts_with("15:"), "got {}", s);
     }
 }
