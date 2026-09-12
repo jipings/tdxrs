@@ -316,9 +316,13 @@ pub fn encode_gbk_padded(s: &str, target_len: usize) -> Result<Vec<u8>> {
 // ================================================================
 
 /// 构建 security bars 请求包
+///
+/// 注意：category 之后的 u16 槽位是固定标志位 1（与 pytdx 实现一致），
+/// 不是复权类型。实测服务器对该位为 0 的请求确定性返回空 K 线（见 issue #12）。
+/// 复权由客户端侧 adjuster 完成，`fq` 参数不进入线格式。
 pub fn build_security_bars_packet(
     category: u8, market: u8, code: &str,
-    start: u32, count: u16, fq: u8,
+    start: u32, count: u16, _fq: u8,
 ) -> Vec<u8> {
     let code_buf = code_bytes(code);
     let mut pkt = Vec::with_capacity(38);
@@ -330,7 +334,7 @@ pub fn build_security_bars_packet(
     pkt.extend_from_slice(&(market as u16).to_le_bytes());
     pkt.extend_from_slice(&code_buf);
     pkt.extend_from_slice(&(category as u16).to_le_bytes());
-    pkt.extend_from_slice(&(fq as u16).to_le_bytes());
+    pkt.extend_from_slice(&1u16.to_le_bytes());
     pkt.extend_from_slice(&(start as u16).to_le_bytes());
     pkt.extend_from_slice(&count.to_le_bytes());
     pkt.extend_from_slice(&0u32.to_le_bytes());
@@ -515,8 +519,24 @@ mod tests {
         assert_eq!(&pkt[14..20], b"600519");
         // category at pos 20-21
         assert_eq!(u16::from_le_bytes([pkt[20], pkt[21]]), 4);
-        // fq at pos 22-23
+        // pos 22-23 是固定标志位，恒为 1（与 pytdx 一致），与 fq 参数无关
         assert_eq!(u16::from_le_bytes([pkt[22], pkt[23]]), 1);
+    }
+
+    #[test]
+    fn test_build_security_bars_packet_flag_bit_regression() {
+        // issue #12 回归：fq=0（不复权）时线格式标志位也必须为 1，
+        // 服务器对 0 返回空 K 线
+        let pkt = build_security_bars_packet(9, 0, "000001", 0, 3, 0);
+        assert_eq!(u16::from_le_bytes([pkt[22], pkt[23]]), 1);
+        // 与 pytdx 1.72 的请求逐字节一致（38B）
+        let pytdx_expected: [u8; 38] = [
+            0x0c, 0x01, 0x08, 0x64, 0x01, 0x01, 0x1c, 0x00, 0x1c, 0x00, 0x2d, 0x05,
+            0x00, 0x00, b'0', b'0', b'0', b'0', b'0', b'1',
+            0x09, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        ];
+        assert_eq!(pkt.as_slice(), &pytdx_expected[..]);
     }
 
     #[test]
