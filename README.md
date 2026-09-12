@@ -155,7 +155,7 @@ TDX 服务端返回未复权原始数据。tdxrs 在客户端自行计算前复�
 |-------|------|------|
 | `TdxHqClient` | 连接池(5) + 心跳 + 重试 + 缓存 | 主力，顺序请求 |
 | `TdxHqFundClient` | 共享连接池 + 基金代码验证 | 基金数据 |
-| `TdxDirectClient` | 每请求独立 TCP | 高并发 (60线程零退化) |
+| `TdxDirectClient` | 每请求独立 TCP（无需 disconnect） | 高并发 (60线程零退化) |
 | `AsyncTdxHqClient` | tokio 异步 + 心跳 | 内部并发（**Python API 同步**，方法非 coroutine，勿 await） |
 
 ### 请求限流

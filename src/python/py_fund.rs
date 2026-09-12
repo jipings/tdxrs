@@ -75,8 +75,10 @@ impl PyTdxHqFundClient {
 
     /// 获取基金列表
     ///
+    /// 获取基金列表 (按市场，一次返回该市场全部基金)
+    ///
     /// Args:
-    ///     market: 市场代码 (0=深圳, 1=上海)
+    ///     market: 市场代码 (0=深圳, 1=上海)，仅此一个参数
     ///
     /// Returns:
     ///     list[dict]: 基金信息列表
@@ -424,6 +426,9 @@ use crate::block::client::TdxBlockClient;
 ///
 /// 封装 TdxDirectClient，提供板块专用 API。
 /// 内置板块查询限制 (1min 禁用，分钟级默认 50 条)。
+///
+/// 注意: 底层为每请求独立 TCP（建连-握手-请求-断开），
+/// 不持有长连接，因此无需（也没有） disconnect 方法。
 ///
 /// # Example
 ///
