@@ -890,29 +890,23 @@ class Downloader:
     def _write_minute_csv(self, path, data, date_int):
         """写入分时 CSV
 
-        A 股每日 242 个时间点: 9:30-11:30 (121) + 13:00-15:00 (121)
+        直接使用每条记录自带的 time 字段。此前按固定 242 个时间槽
+        索引贴标签：Rust 层返回为最新在前（已 reverse），第 0 行实际
+        15:00 被写成 09:30，数据不足 242 条错位更甚、超出则产出
+        idx242 垃圾串 (CODE_REVIEW P0-6)。
         """
         date_str = str(date_int)
         date_fmt = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
 
-        # 生成时间序列 (9:30 开始, 每分钟一个点)
-        times = []
-        # 上午: 9:30-11:30
-        for m in range(121):
-            t = 9 * 60 + 30 + m
-            times.append(f"{t // 60:02d}:{t % 60:02d}")
-        # 下午: 13:00-15:00
-        for m in range(121):
-            t = 13 * 60 + m
-            times.append(f"{t // 60:02d}:{t % 60:02d}")
+        # 按时间升序排列（Rust 层为最新在前），时间取记录自身字段
+        rows = sorted(data, key=lambda x: x.get("time", ""))
 
         with open(path, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             writer.writerow(["datetime", "price", "vol"])
-            for idx, item in enumerate(data):
-                time_str = times[idx] if idx < len(times) else f"idx{idx}"
+            for item in rows:
                 writer.writerow([
-                    f"{date_fmt} {time_str}",
+                    f"{date_fmt} {item['time']}",
                     f"{item['price']:.3f}",
                     int(item["vol"]),
                 ])
