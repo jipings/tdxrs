@@ -484,12 +484,19 @@ pub fn parse_history_transaction_data_with_coefficient(body: &[u8], coefficient:
     }
 
     // 跳过 2 bytes count + 4 bytes header
+    // 按响应声明的 count 解析（与 pytdx 一致）；此前用 `pos + 6 < body.len()`
+    // 的长度启发式会丢弃每页最后一条记录
+    let count = read_u16(body, 0) as usize;
     let mut pos = 6;
 
     let mut result = Vec::new();
     let mut last_price: i64 = 0;
 
-    while pos + 6 < body.len() {
+    for _ in 0..count {
+        // 边界保护：time(u16) + 4 个 varint 至少 6 字节
+        if pos + 6 > body.len() {
+            break;
+        }
         // time (u16 minutes)
         let minutes = read_u16(body, pos) as u32;
         pos += 2;

@@ -1206,7 +1206,10 @@ impl TdxHqClient {
 
         let body = self.send_and_recv_limited(&packet, &self.rate_limiter_minute)?;
         let coefficient = get_security_coefficient(market, code);
-        parse_transaction_data_with_coefficient(&body, coefficient)
+        // 历史逐笔与当日逐笔的响应布局不同：历史版跳过 count 后 4 字节头，
+        // 且每条只有 4 个 varint 字段（当日版 5 个）。此前误用当日解析器，
+        // 导致字段串位输出乱码（见 issue #13）。
+        parse_history_transaction_data_with_coefficient(&body, coefficient)
     }
 
     /// 获取财务信息
