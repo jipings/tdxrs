@@ -30,6 +30,18 @@ quotes = client.get_security_quotes([
 ])
 ```
 
+### F10 资讯 (公司资料)
+
+```python
+from tdxrs import TdxF10Client
+
+f10 = TdxF10Client("59.36.5.11", 7709)
+cats = f10.get_category_auto("000001")            # 12 个栏目 (最新提示/公司概况/财务分析/股东研究/热点题材/公司公告...)
+content = f10.get_content_by_name(0, "000001", "公司概况")  # 栏目全文
+```
+
+> `TdxF10Client` 由 cargo feature `f10` 启用（默认开启）。
+
 ---
 
 ## 与 pytdx 的差异（迁移注意）

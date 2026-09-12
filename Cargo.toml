@@ -10,7 +10,8 @@ repository = "https://github.com/jiangtaovan/tdxrs"
 homepage = "https://github.com/jiangtaovan/tdxrs"
 
 [features]
-default = []
+# f10 默认启用: TdxF10Client 此前双重不可达 (feature 未开 + __init__ 不导出)
+default = ["f10"]
 f10 = []
 integration = []
 

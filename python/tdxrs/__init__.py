@@ -13,6 +13,11 @@ try:
         DailyBarReader, MinBarReader, LcMinBarReader, BlockReader, FinancialReader,
         TdxHqClient, AsyncTdxHqClient, TdxDirectClient, TdxSmartClient, TdxHqFundClient, TdxBlockClient,
     )
+    try:
+        # 需要 cargo feature "f10" (默认启用)
+        from tdxrs._internal import TdxF10Client
+    except ImportError:
+        TdxF10Client = None
 except ImportError:
     raise ImportError(
         "tdxrs native module not found. Please install with: pip install tdxrs"
@@ -22,4 +27,5 @@ __version__ = "0.6.7"
 __all__ = [
     "DailyBarReader", "MinBarReader", "LcMinBarReader", "BlockReader", "FinancialReader",
     "TdxHqClient", "AsyncTdxHqClient", "TdxDirectClient", "TdxSmartClient", "TdxHqFundClient", "TdxBlockClient",
+    "TdxF10Client",
 ]
