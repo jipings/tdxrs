@@ -103,26 +103,39 @@ impl ConnectionPool {
             // 释放锁后再创建连接 (避免持锁做 I/O)
             drop(inner);
 
-            let mut conn = TcpConnection::connect(
+            let conn_result = TcpConnection::connect(
                 &server_clone.0,
                 server_clone.1,
                 self.config.connect_timeout,
-            )?;
+            )
+            .and_then(|mut conn| {
+                if has_handshake {
+                    if let Some(ref handshake_fn) = self.config.handshake_fn {
+                        handshake_fn(&mut conn)?;
+                    }
+                }
+                Ok(conn)
+            });
 
-            // 执行握手 (如果有)
-            if has_handshake {
-                if let Some(ref handshake_fn) = self.config.handshake_fn {
-                    handshake_fn(&mut conn)?;
+            match conn_result {
+                Ok(conn) => {
+                    return Ok(PooledConnGuard {
+                        pool: self,
+                        conn: Some(PooledConnection {
+                            conn,
+                            server: server_clone,
+                        }),
+                    });
+                }
+                Err(e) => {
+                    // 连接/握手失败必须回滚计数，否则失败 max_size 次后
+                    // 池永久 POOL_EXHAUSTED 且泄漏无法清除 (CODE_REVIEW P0-3B)
+                    let mut inner = self.inner.lock().unwrap();
+                    inner.total = inner.total.saturating_sub(1);
+                    inner.active = inner.active.saturating_sub(1);
+                    return Err(e);
                 }
             }
-
-            return Ok(PooledConnGuard {
-                pool: self,
-                conn: Some(PooledConnection {
-                    conn,
-                    server: server_clone,
-                }),
-            });
         }
 
         loge!("pool", "exhausted (active={}, max={})", inner.active, self.config.max_size);
@@ -150,25 +163,38 @@ impl ConnectionPool {
             inner.active += 1;
             drop(inner);
 
-            let mut conn = TcpConnection::connect(
+            let conn_result = TcpConnection::connect(
                 &server_clone.0,
                 server_clone.1,
                 self.config.connect_timeout,
-            )?;
+            )
+            .and_then(|mut conn| {
+                if has_handshake {
+                    if let Some(ref handshake_fn) = self.config.handshake_fn {
+                        handshake_fn(&mut conn)?;
+                    }
+                }
+                Ok(conn)
+            });
 
-            if has_handshake {
-                if let Some(ref handshake_fn) = self.config.handshake_fn {
-                    handshake_fn(&mut conn)?;
+            match conn_result {
+                Ok(conn) => {
+                    return Ok(Some(PooledConnGuard {
+                        pool: self,
+                        conn: Some(PooledConnection {
+                            conn,
+                            server: server_clone,
+                        }),
+                    }));
+                }
+                Err(e) => {
+                    // 同 borrow: 失败回滚计数 (CODE_REVIEW P0-3B)
+                    let mut inner = self.inner.lock().unwrap();
+                    inner.total = inner.total.saturating_sub(1);
+                    inner.active = inner.active.saturating_sub(1);
+                    return Err(e);
                 }
             }
-
-            return Ok(Some(PooledConnGuard {
-                pool: self,
-                conn: Some(PooledConnection {
-                    conn,
-                    server: server_clone,
-                }),
-            }));
         }
 
         Ok(None)
@@ -177,12 +203,14 @@ impl ConnectionPool {
     /// 归还连接到池中
     fn return_connection(&self, pooled: PooledConnection) {
         let mut inner = self.inner.lock().unwrap();
-        inner.active -= 1;
+        // 饱和减：close_all 等路径可能已重置计数，普通 -= 在下溢时 panic
+        // 且发生在持锁期间会毒化互斥锁 (CODE_REVIEW P0-3A)
+        inner.active = inner.active.saturating_sub(1);
 
         if pooled.conn.is_open() && inner.idle.len() < self.config.max_size {
             inner.idle.push_back(pooled);
         } else {
-            inner.total -= 1;
+            inner.total = inner.total.saturating_sub(1);
         }
     }
 
@@ -191,9 +219,11 @@ impl ConnectionPool {
         let mut inner = self.inner.lock().unwrap();
         while let Some(mut conn) = inner.idle.pop_front() {
             conn.conn.close();
-            inner.total -= 1;
+            inner.total = inner.total.saturating_sub(1);
         }
-        inner.active = 0;
+        // 不清零 active：在途 guard 归还时自会递减；此处清零会让后续
+        // 归还在 debug 构建下 panic（持锁毒化互斥锁）、release 下回绕
+        // 为 usize::MAX (CODE_REVIEW P0-3A)
     }
 
     /// 获取池状态
@@ -283,5 +313,43 @@ mod tests {
         pool.close_all();
         let stats = pool.stats();
         assert_eq!(stats.total, 0);
+    }
+
+    // CODE_REVIEW P0-3B: 连接失败必须回滚计数，否则失败 max_size 次后永久 POOL_EXHAUSTED
+    #[test]
+    fn test_borrow_failure_rolls_back_counters() {
+        let config = PoolConfig {
+            max_size: 2,
+            connect_timeout: 1.0,
+            handshake_fn: None,
+        };
+        let pool = ConnectionPool::new_single(("127.0.0.1".into(), 1), config);
+        // 端口 1 无监听，连接必然快速失败
+        for _ in 0..5 {
+            assert!(pool.borrow(&("127.0.0.1".into(), 1)).is_err());
+        }
+        let stats = pool.stats();
+        assert_eq!(stats.total, 0, "失败后 total 应回滚为 0，实际 {}", stats.total);
+        assert_eq!(stats.active, 0, "失败后 active 应回滚为 0，实际 {}", stats.active);
+    }
+
+    // CODE_REVIEW P0-3A: close_all 后在途 guard 归还不得使 active 下溢
+    #[test]
+    fn test_return_after_close_all_no_underflow() {
+        use std::net::TcpListener;
+        // 本地起一个真 TCP 监听，确保能建连
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let config = PoolConfig {
+            max_size: 2,
+            connect_timeout: 1.0,
+            handshake_fn: None,
+        };
+        let pool = ConnectionPool::new_single(("127.0.0.1".into(), port), config);
+        let guard = pool.borrow(&("127.0.0.1".into(), port)).expect("本地监听连接应成功");
+        pool.close_all(); // 模拟切服：池被清空，guard 仍在途
+        drop(guard); // 归还 —— 修复前 active 0-1 panic（持锁毒化互斥锁）
+        let stats = pool.stats();
+        assert!(stats.active < usize::MAX, "active 不应下溢回绕");
     }
 }
