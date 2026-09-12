@@ -57,9 +57,7 @@ impl PyTdxSmartClient {
         count: u16,
         fq: u8,
     ) -> PyResult<Py<PyAny>> {
-        let bars = self
-            .client
-            .get_security_bars(category, market, code, start, count, fq)
+        let bars = py.detach(|| self.client.get_security_bars(category, market, code, start, count, fq))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         let result = PyList::empty(py);
@@ -94,9 +92,7 @@ impl PyTdxSmartClient {
             .map(|(m, c)| (*m, c.as_str()))
             .collect();
 
-        let quotes = self
-            .client
-            .get_security_quotes(&refs)
+        let quotes = py.detach(|| self.client.get_security_quotes(&refs))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         let result = PyList::empty(py);

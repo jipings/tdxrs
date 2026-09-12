@@ -65,8 +65,7 @@ impl PyTdxDirectClient {
         &self, py: Python<'_>, category: u8, market: u8, code: &str,
         start: u32, count: u16, fq: u8,
     ) -> PyResult<Py<PyAny>> {
-        let bars = self.client.lock().unwrap()
-            .get_security_bars(category, market, code, start, count, fq)
+        let bars = py.detach(|| self.client.lock().unwrap().get_security_bars(category, market, code, start, count, fq))
             .map_err(to_py_err)?;
         bars_to_list(py, &bars, |b, d| {
             d.set_item("open", b.open)?;
@@ -92,8 +91,7 @@ impl PyTdxDirectClient {
         &self, py: Python<'_>, category: u8, market: u8, code: &str,
         start: u32, count: u16, fq: u8,
     ) -> PyResult<Py<PyAny>> {
-        let bars = self.client.lock().unwrap()
-            .get_index_bars(category, market, code, start, count, fq)
+        let bars = py.detach(|| self.client.lock().unwrap().get_index_bars(category, market, code, start, count, fq))
             .map_err(to_py_err)?;
         bars_to_list(py, &bars, |b, d| {
             d.set_item("open", b.open)?;
@@ -174,8 +172,7 @@ impl PyTdxDirectClient {
     fn get_history_transaction_data(
         &self, py: Python<'_>, market: u8, code: &str, start: u16, count: u16, date: u32,
     ) -> PyResult<Py<PyAny>> {
-        let data = self.client.lock().unwrap()
-            .get_history_transaction_data(market, code, start, count, date)
+        let data = py.detach(|| self.client.lock().unwrap().get_history_transaction_data(market, code, start, count, date))
             .map_err(to_py_err)?;
         tick_to_list(py, &data)
     }

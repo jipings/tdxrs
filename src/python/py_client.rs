@@ -35,9 +35,8 @@ impl PyTdxHqClient {
 
     /// 连接到 TDX 服务器
     #[pyo3(signature = (ip, port, timeout=None))]
-    fn connect(&self, ip: &str, port: u16, timeout: Option<f64>) -> PyResult<bool> {
-        self.client
-            .connect(ip, port, timeout)
+    fn connect(&self, py: Python<'_>, ip: &str, port: u16, timeout: Option<f64>) -> PyResult<bool> {
+        py.detach(|| self.client.connect(ip, port, timeout))
             .map_err(to_py_err)
     }
 
@@ -159,7 +158,7 @@ impl PyTdxHqClient {
         py: Python<'_>,
         timeout: f64,
     ) -> PyResult<Py<PyAny>> {
-        let results = self.client.probe_servers(timeout);
+        let results = py.detach(|| self.client.probe_servers(timeout));
         let list = PyList::empty(py);
         for (name, ip, port, tcp_ms, hs_ms, api_ms) in &results {
             let tuple = PyTuple::new(py, &[
@@ -206,9 +205,7 @@ impl PyTdxHqClient {
         count: u16,
         fq: u8,
     ) -> PyResult<Py<PyAny>> {
-        let bars = self
-            .client
-            .get_security_bars(category, market, code, start, count, fq)
+        let bars = py.detach(|| self.client.get_security_bars(category, market, code, start, count, fq))
             .map_err(to_py_err)?;
 
         let list = PyList::empty(py);
@@ -242,9 +239,7 @@ impl PyTdxHqClient {
         count: u16,
         fq: u8,
     ) -> PyResult<Py<PyAny>> {
-        let bars = self
-            .client
-            .get_security_bars_all(category, market, code, count, fq)
+        let bars = py.detach(|| self.client.get_security_bars_all(category, market, code, count, fq))
             .map_err(to_py_err)?;
 
         let list = PyList::empty(py);
@@ -281,9 +276,7 @@ impl PyTdxHqClient {
         count: u16,
         fq: u8,
     ) -> PyResult<Py<PyAny>> {
-        let bars = self
-            .client
-            .get_index_bars(category, market, code, start, count, fq)
+        let bars = py.detach(|| self.client.get_index_bars(category, market, code, start, count, fq))
             .map_err(to_py_err)?;
 
         let list = PyList::empty(py);
@@ -319,9 +312,7 @@ impl PyTdxHqClient {
         count: u16,
         fq: u8,
     ) -> PyResult<Py<PyAny>> {
-        let bars = self
-            .client
-            .get_index_bars_all(category, market, code, count, fq)
+        let bars = py.detach(|| self.client.get_index_bars_all(category, market, code, count, fq))
             .map_err(to_py_err)?;
 
         let list = PyList::empty(py);
@@ -353,9 +344,7 @@ impl PyTdxHqClient {
         all_stock: Vec<(u8, String)>,
     ) -> PyResult<Py<PyAny>> {
         let refs: Vec<(u8, &str)> = all_stock.iter().map(|(m, c)| (*m, c.as_str())).collect();
-        let quotes = self
-            .client
-            .get_security_quotes(&refs)
+        let quotes = py.detach(|| self.client.get_security_quotes(&refs))
             .map_err(to_py_err)?;
 
         let list = PyList::empty(py);
@@ -407,9 +396,7 @@ impl PyTdxHqClient {
         market: u8,
         start: u16,
     ) -> PyResult<Py<PyAny>> {
-        let list_data = self
-            .client
-            .get_security_list(market, start)
+        let list_data = py.detach(|| self.client.get_security_list(market, start))
             .map_err(to_py_err)?;
 
         let list = PyList::empty(py);
@@ -439,9 +426,7 @@ impl PyTdxHqClient {
         market: u8,
         code: &str,
     ) -> PyResult<Py<PyAny>> {
-        let data = self
-            .client
-            .get_minute_time_data(market, code)
+        let data = py.detach(|| self.client.get_minute_time_data(market, code))
             .map_err(to_py_err)?;
 
         let list = PyList::empty(py);
@@ -464,9 +449,7 @@ impl PyTdxHqClient {
         code: &str,
         date: u32,
     ) -> PyResult<Py<PyAny>> {
-        let data = self
-            .client
-            .get_history_minute_time_data(market, code, date)
+        let data = py.detach(|| self.client.get_history_minute_time_data(market, code, date))
             .map_err(to_py_err)?;
 
         let list = PyList::empty(py);
@@ -491,9 +474,7 @@ impl PyTdxHqClient {
         start: u16,
         count: u16,
     ) -> PyResult<Py<PyAny>> {
-        let data = self
-            .client
-            .get_transaction_data(market, code, start, count)
+        let data = py.detach(|| self.client.get_transaction_data(market, code, start, count))
             .map_err(to_py_err)?;
 
         let list = PyList::empty(py);
@@ -521,9 +502,7 @@ impl PyTdxHqClient {
         count: u16,
         date: u32,
     ) -> PyResult<Py<PyAny>> {
-        let data = self
-            .client
-            .get_history_transaction_data(market, code, start, count, date)
+        let data = py.detach(|| self.client.get_history_transaction_data(market, code, start, count, date))
             .map_err(to_py_err)?;
 
         let list = PyList::empty(py);
@@ -547,9 +526,7 @@ impl PyTdxHqClient {
         market: u8,
         code: &str,
     ) -> PyResult<Py<PyAny>> {
-        let info = self
-            .client
-            .get_finance_info(market, code)
+        let info = py.detach(|| self.client.get_finance_info(market, code))
             .map_err(to_py_err)?;
 
         let dict = PyDict::new(py);
@@ -599,9 +576,7 @@ impl PyTdxHqClient {
         market: u8,
         code: &str,
     ) -> PyResult<Py<PyAny>> {
-        let data = self
-            .client
-            .get_xdxr_info(market, code)
+        let data = py.detach(|| self.client.get_xdxr_info(market, code))
             .map_err(to_py_err)?;
 
         let list = PyList::empty(py);
@@ -634,9 +609,7 @@ impl PyTdxHqClient {
         py: Python<'_>,
         block_file: &str,
     ) -> PyResult<Py<PyAny>> {
-        let data = self
-            .client
-            .get_and_parse_block_info(block_file)
+        let data = py.detach(|| self.client.get_and_parse_block_info(block_file))
             .map_err(to_py_err)?;
 
         let list = PyList::empty(py);
@@ -666,9 +639,7 @@ impl PyTdxHqClient {
         count: u16,
         fq: u8,
     ) -> PyResult<Py<PyAny>> {
-        let bars = self
-            .client
-            .get_security_bars(category, market, code, start, count, fq)
+        let bars = py.detach(|| self.client.get_security_bars(category, market, code, start, count, fq))
             .map_err(to_py_err)?;
 
         let list = PyList::empty(py);
@@ -702,9 +673,7 @@ impl PyTdxHqClient {
         count: u16,
         fq: u8,
     ) -> PyResult<Py<PyAny>> {
-        let bars = self
-            .client
-            .get_index_bars(category, market, code, start, count, fq)
+        let bars = py.detach(|| self.client.get_index_bars(category, market, code, start, count, fq))
             .map_err(to_py_err)?;
 
         let list = PyList::empty(py);
@@ -733,9 +702,7 @@ impl PyTdxHqClient {
         all_stock: Vec<(u8, String)>,
     ) -> PyResult<Py<PyAny>> {
         let refs: Vec<(u8, &str)> = all_stock.iter().map(|(m, c)| (*m, c.as_str())).collect();
-        let quotes = self
-            .client
-            .get_security_quotes(&refs)
+        let quotes = py.detach(|| self.client.get_security_quotes(&refs))
             .map_err(to_py_err)?;
 
         let list = PyList::empty(py);

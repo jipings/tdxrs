@@ -71,28 +71,28 @@ impl PyAsyncTdxHqClient {
 
     /// 连接到 TDX 服务器 (建立连接池)
     #[pyo3(signature = (ip, port, timeout=None))]
-    fn connect(&self, ip: &str, port: u16, timeout: Option<f64>) -> PyResult<bool> {
-        self.rt
-            .block_on(self.client.connect(ip, port, timeout))
+    fn connect(&self, py: Python<'_>, ip: &str, port: u16, timeout: Option<f64>) -> PyResult<bool> {
+        py.detach(|| self.rt.block_on(self.client.connect(ip, port, timeout)))
+
             .map_err(to_py_err)
     }
 
     /// 连接到任意可用服务器
     #[pyo3(signature = (timeout=None))]
-    fn connect_to_any(&self, timeout: Option<f64>) -> PyResult<bool> {
-        self.rt
-            .block_on(self.client.connect_to_any(timeout))
+    fn connect_to_any(&self, py: Python<'_>, timeout: Option<f64>) -> PyResult<bool> {
+        py.detach(|| self.rt.block_on(self.client.connect_to_any(timeout)))
+
             .map_err(to_py_err)
     }
 
     /// 断开所有连接
-    fn disconnect(&self) {
-        self.rt.block_on(self.client.disconnect());
+    fn disconnect(&self, py: Python<'_>) {
+        py.detach(|| self.rt.block_on(self.client.disconnect()));
     }
 
     /// 当前连接数
-    fn connection_count(&self) -> usize {
-        self.rt.block_on(self.client.connection_count())
+    fn connection_count(&self, py: Python<'_>) -> usize {
+        py.detach(|| self.rt.block_on(self.client.connection_count()))
     }
 
     /// 连接是否存活
@@ -352,9 +352,9 @@ impl PyAsyncTdxHqClient {
     // ============================================================
 
     /// 获取证券数量
-    fn get_security_count(&self, market: u8) -> PyResult<u16> {
-        self.rt
-            .block_on(self.client.get_security_count(market))
+    fn get_security_count(&self, py: Python<'_>, market: u8) -> PyResult<u16> {
+        py.detach(|| self.rt.block_on(self.client.get_security_count(market)))
+
             .map_err(to_py_err)
     }
 
