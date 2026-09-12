@@ -586,10 +586,11 @@ class Downloader:
         if self.format == "csv":
             self._write_csv(out_path, all_bars, append=existing_last_date is not None)
         elif self.format == "parquet":
-            self._write_parquet(out_path, all_bars)
+            self._write_parquet(out_path, all_bars, merge_existing=existing_last_date is not None)
         else:
-            # TDX 二进制格式: 全量重写 (不支持追加)
-            self._write_tdx(out_path, all_bars)
+            # TDX 二进制格式: 定长 32B 记录 —— 增量时追加，此前全量重写
+            # 会把已有历史抹成只剩增量部分 (CODE_REVIEW P0-5)
+            self._write_tdx(out_path, all_bars, append=existing_last_date is not None)
 
         # 更新同步记录 (仅 fq=0)
         if all_bars and self.fq == 0:
@@ -670,10 +671,14 @@ class Downloader:
                     int(bar["vol"]),
                 ])
 
-    def _write_tdx(self, path, bars):
-        """写入 TDX 二进制格式 (.day) — 可被 DailyBarReader 直接读取"""
+    def _write_tdx(self, path, bars, append=False):
+        """写入 TDX 二进制格式 (.day) — 可被 DailyBarReader 直接读取
+
+        定长 32 字节记录，append=True 时以二进制追加模式写入增量部分。
+        """
         import struct
-        with open(path, "wb") as f:
+        mode = "ab" if append else "wb"
+        with open(path, mode) as f:
             for bar in bars:
                 dt = bar["datetime"]
                 # TDX 日期编码: (year-2004)*2048 + month*100 + day
@@ -698,8 +703,12 @@ class Downloader:
                     0,  # reserved
                 ))
 
-    def _write_parquet(self, path, bars):
-        """写入 Parquet 格式 (需要 pyarrow)"""
+    def _write_parquet(self, path, bars, merge_existing=False):
+        """写入 Parquet 格式 (需要 pyarrow)
+
+        merge_existing=True 时读出旧表与新记录合并后重写，
+        避免增量更新把历史抹掉 (CODE_REVIEW P0-5)。
+        """
         try:
             import pyarrow as pa
             import pyarrow.parquet as pq
@@ -726,6 +735,13 @@ class Downloader:
             "amount": pa.array(amounts, type=pa.float64()),
             "volume": pa.array(volumes, type=pa.int64()),
         })
+        if merge_existing and Path(path).exists():
+            try:
+                old = pq.read_table(path)
+                # 去重: 旧表记录 + 新记录（新记录日期 > 旧表末条，理论上无重叠）
+                table = pa.concat_tables([old, table])
+            except Exception as e:
+                print(f"[WARN] 合并旧 parquet 失败（全量重写）: {e}")
         pq.write_table(table, path)
 
     # ================================================================
