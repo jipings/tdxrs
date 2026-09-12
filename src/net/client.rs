@@ -609,12 +609,16 @@ impl TdxHqClient {
     ///
     /// # 示例
     ///
-    /// ```rust
-    /// let mut client = TdxHqClient::new();
-    /// client.connect()?;
+    /// ```rust,no_run
+    /// use tdxrs::net::client::TdxHqClient;
+    ///
+    /// let client = TdxHqClient::new();
+    /// client.connect("59.36.5.11", 7709, None)?;
     ///
     /// // 发送自定义请求
+    /// let custom_packet: Vec<u8> = vec![0x0c, 0x01, 0x02, 0x64];
     /// let response = client.send_raw_and_recv(&custom_packet)?;
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
     pub fn send_raw_and_recv(&self, packet: &[u8]) -> Result<Vec<u8>> {
         self.send_and_recv(packet)

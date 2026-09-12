@@ -9,19 +9,19 @@
 ///
 /// # 示例
 ///
-/// ```rust
-/// use tdxrs::net::TdxHqClient;
+/// ```rust,no_run
+/// use tdxrs::net::client::TdxHqClient;
 /// use tdxrs::profile::ProfileClient;
 ///
 /// let mut client = TdxHqClient::new();
-/// client.connect()?;
+/// client.connect("59.36.5.11", 7709, None)?;
 ///
 /// let mut profile = ProfileClient::new(&mut client);
 /// let categories = profile.get_category(1, "600519")?;
 /// for cat in &categories {
 ///     println!("{}: {} bytes", cat.name, cat.length);
 /// }
-/// # Ok::<(), Box<dyn std::error::Error>>
+/// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 pub mod client;
 pub mod constants;

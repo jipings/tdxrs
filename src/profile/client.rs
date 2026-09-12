@@ -15,19 +15,19 @@ use super::types::*;
 ///
 /// # 示例
 ///
-/// ```rust
-/// use tdxrs::net::TdxHqClient;
+/// ```rust,no_run
+/// use tdxrs::net::client::TdxHqClient;
 /// use tdxrs::profile::ProfileClient;
 ///
 /// let mut client = TdxHqClient::new();
-/// client.connect()?;
+/// client.connect("59.36.5.11", 7709, None)?;
 ///
 /// let mut profile = ProfileClient::new(&mut client);
 /// let categories = profile.get_category(1, "600519")?;
 /// for cat in &categories {
 ///     println!("{}: {} bytes", cat.name, cat.length);
 /// }
-/// # Ok::<(), Box<dyn std::error::Error>>
+/// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 pub struct ProfileClient<'a> {
     client: &'a mut TdxHqClient,
@@ -53,11 +53,18 @@ impl<'a> ProfileClient<'a> {
     ///
     /// # 示例
     ///
-    /// ```rust
+    /// ```rust,no_run
+    /// use tdxrs::net::client::TdxHqClient;
+    /// use tdxrs::profile::ProfileClient;
+    ///
+    /// let mut hq = TdxHqClient::new();
+    /// hq.connect("59.36.5.11", 7709, None)?;
+    /// let mut profile = ProfileClient::new(&mut hq);
     /// let categories = profile.get_category(1, "600519")?;
     /// for cat in &categories {
     ///     println!("{}", cat.name);
     /// }
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
     pub fn get_category(&mut self, market: u8, code: &str) -> Result<Vec<F10Category>> {
         // 验证市场代码
