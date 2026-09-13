@@ -1448,4 +1448,73 @@ mod tests {
         let kept = filter_quotes_by_request(&requested, records);
         assert_eq!(kept.len(), 2);
     }
+
+    // CODE_REVIEW: panic 路径 fuzz —— 畸形/截断/随机字节过全部解析器不得 panic
+    // （PanicException 不可被 except Exception 捕获，恶意服务器可直接杀死客户端）
+    fn deterministic_bytes(seed: u64, len: usize) -> Vec<u8> {
+        // xorshift64* 伪随机，种子固定保证可复现
+        let mut s = seed.wrapping_mul(0x9E3779B97F4A7C15) | 1;
+        (0..len)
+            .map(|_| {
+                s ^= s >> 12;
+                s ^= s << 25;
+                s ^= s >> 27;
+                (s.wrapping_mul(0x2545F4914F6CDD1D) >> 32) as u8
+            })
+            .collect()
+    }
+
+    #[test]
+    fn test_fuzz_all_parsers_no_panic() {
+        let mut cases: Vec<Vec<u8>> = Vec::new();
+        // 1) 全零 / 全 0xFF
+        for len in [0usize, 1, 2, 16, 64, 256, 1024] {
+            cases.push(vec![0x00; len]);
+            cases.push(vec![0xFF; len]);
+        }
+        // 2) 伪随机
+        for seed in 1..=20u64 {
+            for len in [2usize, 17, 100, 500, 2000] {
+                cases.push(deterministic_bytes(seed, len));
+            }
+        }
+        // 3) 伪随机 + 高位连续置位（攻击 varint 续位）
+        for seed in 100..=110u64 {
+            let mut b = deterministic_bytes(seed, 300);
+            for x in b.iter_mut() {
+                *x |= 0x80;
+            }
+            cases.push(b);
+        }
+
+        for (i, data) in cases.iter().enumerate() {
+            // 每个解析器: Result 任意值均可，唯独不许 panic
+            let _ = parse_security_count(data);
+            let _ = parse_security_bars(data, 9);
+            let _ = parse_security_bars(data, 4);
+            let _ = parse_security_bars(data, 0);
+            let _ = parse_index_bars(data, 9);
+            let _ = parse_transaction_data(data);
+            let _ = parse_history_transaction_data(data);
+            let _ = parse_minute_time_data(data, 0, "000001");
+            let _ = parse_history_minute_time_data(data, 0, "000001");
+            let _ = parse_security_quotes(data);
+            let _ = parse_finance_info(data, 0, "000001");
+            let _ = parse_xdxr_info(data);
+            let _ = parse_security_list(data);
+            // 前 6 字节构造 count 的高变异场景
+            if data.len() >= 6 {
+                let mut d2 = data.clone();
+                d2[0] = 0xFF;
+                d2[1] = 0xFF;
+                let _ = parse_transaction_data(&d2);
+                let _ = parse_history_transaction_data(&d2);
+                let _ = parse_security_quotes(&d2);
+            }
+            if i % 50 == 0 {
+                // 借用 case 下标避免编译器认为无用
+                let _ = i;
+            }
+        }
+    }
 }
