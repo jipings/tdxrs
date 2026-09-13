@@ -6,6 +6,9 @@ on:
 
 jobs:
   linux:
+    # 仅上游仓库可发布：fork 中误推 v*.*.* tag 时静默跳过，
+    # 避免因缺少 PYPI_TOKEN / 非包名 owner 而白跑失败流程
+    if: github.repository == 'jiangtaovan/tdxrs'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -31,6 +34,7 @@ jobs:
           TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
 
   macos:
+    if: github.repository == 'jiangtaovan/tdxrs'
     runs-on: macos-latest
     strategy:
       matrix:
@@ -52,6 +56,7 @@ jobs:
           TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
 
   windows:
+    if: github.repository == 'jiangtaovan/tdxrs'
     runs-on: windows-latest
     strategy:
       matrix:
