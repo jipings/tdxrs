@@ -10,6 +10,17 @@ pub struct TcpConnection {
 impl TcpConnection {
     pub fn connect(ip: &str, port: u16, timeout_secs: f64) -> Result<Self> {
         let addr = format!("{}:{}", ip, port);
+        // timeout 是 Python 传入的裸 f64，全链路无校验：负数/NaN/超界值
+        // 会让 from_secs_f64 panic（PanicException 不可被 except Exception
+        // 捕获）(CODE_REVIEW P1-7)
+        if !timeout_secs.is_finite() || timeout_secs <= 0.0 {
+            return Err(TdxError::Connection(format!(
+                "invalid timeout {}s (must be finite and > 0)",
+                timeout_secs
+            )));
+        }
+        // 上界钳制，防止极大有限值溢出 Duration
+        let timeout_secs = timeout_secs.min(86400.0);
         // 连接阶段也必须受超时约束：阻塞式 TcpStream::connect 对不可达
         // 地址会挂到 OS 级 TCP 超时(~2min)，connect_to_any 遍历上百台
         // 服务器时最坏可挂数小时 (CODE_REVIEW P1-4)
