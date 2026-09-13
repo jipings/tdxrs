@@ -326,7 +326,10 @@ pub fn parse_minute_time_data(body: &[u8], market: u8, code: &str) -> Result<Vec
             break;
         }
         let (price_diff, new_pos) = get_price(body, pos);
-        pre_diff_base += price_diff;
+        // varint 来自不可信输入，累加可至 i64 边界：溢出在
+        // overflow-checks 构建下 panic、release 下静默回绕错值。
+        // saturating 语义与 get_price 的越界截断一致 (CODE_REVIEW P0-4 复审)
+        pre_diff_base = pre_diff_base.saturating_add(price_diff);
         let price = (pre_diff_base as f64) * coefficient;
         pos = new_pos;
 
@@ -376,7 +379,10 @@ pub fn parse_history_minute_time_data(
     while pos < body.len() {
         let old_pos = pos;
         let (price_diff, new_pos) = get_price(body, pos);
-        pre_diff_base += price_diff;
+        // varint 来自不可信输入，累加可至 i64 边界：溢出在
+        // overflow-checks 构建下 panic、release 下静默回绕错值。
+        // saturating 语义与 get_price 的越界截断一致 (CODE_REVIEW P0-4 复审)
+        pre_diff_base = pre_diff_base.saturating_add(price_diff);
         let price = (pre_diff_base as f64) * coefficient;
         pos = new_pos;
 
@@ -442,7 +448,8 @@ pub fn parse_transaction_data_with_coefficient(body: &[u8], coefficient: f64) ->
 
         // price (delta encoded)
         let (price_diff, new_pos) = get_price(body, pos);
-        last_price += price_diff;
+        // 同 pre_diff_base：不可信 varint 累加必须饱和而非溢出
+        last_price = last_price.saturating_add(price_diff);
         let price = last_price as f64 * coefficient;
         pos = new_pos;
 
@@ -515,7 +522,8 @@ pub fn parse_history_transaction_data_with_coefficient(body: &[u8], coefficient:
 
         // price (delta encoded)
         let (price_diff, new_pos) = get_price(body, pos);
-        last_price += price_diff;
+        // 同 pre_diff_base：不可信 varint 累加必须饱和而非溢出
+        last_price = last_price.saturating_add(price_diff);
         let price = last_price as f64 * coefficient;
         pos = new_pos;
 
