@@ -21,8 +21,6 @@ use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
 use std::sync::{Arc};
 use std::time::{Duration, Instant};
 
-use flate2::read::ZlibDecoder;
-use std::io::Read;
 use tokio::sync::{mpsc, oneshot, Mutex};
 
 use crate::error::{Result, TdxError};

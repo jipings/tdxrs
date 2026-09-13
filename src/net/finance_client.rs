@@ -19,9 +19,7 @@
 //! | `get_report_file(filename, offset)` | ≤30KB | 分片下载 gpcw 文件 |
 //! | `get_financial_list()` | ~2KB | 可用报告期列表 (gpcw.txt) |
 
-use flate2::read::ZlibDecoder;
 use std::fs;
-use std::io::Read;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 

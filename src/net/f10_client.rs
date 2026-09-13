@@ -5,8 +5,6 @@
 //!   2. 连接时长不同 — 全量获取可能持续数秒，不适合共享连接池
 //!   3. 避免影响行情数据的实时性
 
-use flate2::read::ZlibDecoder;
-use std::io::Read;
 
 use crate::error::Result;
 use crate::net::connection::TcpConnection;

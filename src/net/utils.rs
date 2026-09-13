@@ -394,7 +394,7 @@ pub fn decompress_zlib_checked(data: &[u8], unzip_size: u32) -> Result<Vec<u8>> 
     let limit = (unzip_size as usize)
         .saturating_add(1024)
         .min(DECOMPRESS_ABS_LIMIT);
-    let mut decoder = ZlibDecoder::new(data);
+    let decoder = ZlibDecoder::new(data);
     let mut out = Vec::new();
     decoder
         .take(limit as u64 + 1)

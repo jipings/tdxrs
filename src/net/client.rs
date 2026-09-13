@@ -3,8 +3,6 @@ use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use flate2::read::ZlibDecoder;
-use std::io::Read;
 
 use crate::error::{Result, TdxError};
 use crate::error_codes::ErrorCode;
