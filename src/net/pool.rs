@@ -48,6 +48,8 @@ impl Default for PoolConfig {
 pub struct ConnectionPool {
     inner: Mutex<PoolInner>,
     config: PoolConfig,
+    /// 连接超时（可运行时更新，覆盖 config.connect_timeout）
+    connect_timeout: Mutex<f64>,
 }
 
 struct PoolInner {
@@ -65,6 +67,7 @@ impl ConnectionPool {
                 active: 0,
                 total: 0,
             }),
+            connect_timeout: Mutex::new(config.connect_timeout),
             config,
         }
     }
@@ -119,7 +122,7 @@ impl ConnectionPool {
             let conn_result = TcpConnection::connect(
                 &server_clone.0,
                 server_clone.1,
-                self.config.connect_timeout,
+                *self.connect_timeout.lock().unwrap_or_else(|e| e.into_inner()),
             )
             .and_then(|mut conn| {
                 if has_handshake {
@@ -191,7 +194,7 @@ impl ConnectionPool {
             let conn_result = TcpConnection::connect(
                 &server_clone.0,
                 server_clone.1,
-                self.config.connect_timeout,
+                *self.connect_timeout.lock().unwrap_or_else(|e| e.into_inner()),
             )
             .and_then(|mut conn| {
                 if has_handshake {
@@ -249,6 +252,13 @@ impl ConnectionPool {
         // 不清零 active：在途 guard 归还时自会递减；此处清零会让后续
         // 归还在 debug 构建下 panic（持锁毒化互斥锁）、release 下回绕
         // 为 usize::MAX (CODE_REVIEW P0-3A)
+    }
+
+    /// 更新连接超时（传播给池内后续新建连接）
+    pub fn set_connect_timeout(&self, timeout: f64) {
+        if timeout.is_finite() && timeout > 0.0 {
+            *self.connect_timeout.lock().unwrap_or_else(|e| e.into_inner()) = timeout;
+        }
     }
 
     /// 获取池状态

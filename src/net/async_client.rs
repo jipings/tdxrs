@@ -238,6 +238,8 @@ pub struct AsyncTdxHqClient {
     list_cache: Mutex<HashMap<u8, CacheEntry<Vec<SecurityInfo>>>>,
     cache_ttl: Duration,
     pool_size: usize,
+    /// 用户设置的基准 RPS（set_phase 按乘数调整，不覆盖用户值）
+    base_rps: u32,
     /// 心跳停止信号: 发送 `()` 表示停止心跳 task
     heartbeat_stop: tokio::sync::Mutex<Option<oneshot::Sender<()>>>,
     /// 连接是否存活 (心跳检测)
@@ -269,6 +271,7 @@ impl AsyncTdxHqClient {
             list_cache: Mutex::new(HashMap::new()),
             cache_ttl: Duration::from_secs(30),
             pool_size: pool_size.max(1),
+            base_rps: 20,
             heartbeat_stop: tokio::sync::Mutex::new(None),
             current_server: tokio::sync::Mutex::new(None),
             connected: Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -303,7 +306,19 @@ impl AsyncTdxHqClient {
     }
 
     /// 连接到任意可用服务器
+    ///
+    /// 与同步版对齐：已连接直接返回、优先上次成功服务器，再遍历
+    /// DEFAULT_SERVERS（此前无短路无缓存，每次都从头扫）(CODE_REVIEW P2-1)
     pub async fn connect_to_any(&self, timeout: Option<f64>) -> Result<bool> {
+        if self.is_connected() {
+            return Ok(true);
+        }
+        let last = self.current_server.lock().await.clone();
+        if let Some((ref ip, port)) = last {
+            if let Ok(true) = self.connect(ip, port, timeout).await {
+                return Ok(true);
+            }
+        }
         for &(_, ip, port) in DEFAULT_SERVERS {
             match self.connect(ip, port, timeout).await {
                 Ok(true) => return Ok(true),
@@ -327,20 +342,22 @@ impl AsyncTdxHqClient {
         self.connections.lock().await.len()
     }
 
-    /// 设置限流 RPS
+    /// 设置限流 RPS（作为基准，set_phase 按乘数调整）
     pub fn set_rate_limit(&mut self, rps: u32) {
+        self.base_rps = rps;
         self.rate_limiter.set_rps(rps);
     }
 
-    /// 设置交易阶段限流
+    /// 设置交易阶段限流（乘数制，与同步版一致：不覆盖用户基准）
     pub fn set_phase(&mut self, phase: TradingPhase) {
-        let rps = match phase {
-            TradingPhase::Trading => 50,
-            TradingPhase::PrePost => 100,
-            TradingPhase::Closed => 200,
+        let mult = match phase {
+            TradingPhase::Trading => 1.0,
+            TradingPhase::PrePost => 2.0,
+            TradingPhase::Closed => 4.0,
         };
-        self.rate_limiter.set_rps(rps);
+        self.rate_limiter.set_rps(((self.base_rps as f64) * mult) as u32);
     }
+
 
     /// 自动检测交易阶段并设置限流
     pub fn auto_detect_phase(&mut self) -> TradingPhase {

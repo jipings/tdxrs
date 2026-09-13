@@ -101,6 +101,10 @@ impl TdxHqClient {
         self.connect_internal(ip, port, timeout, true)
     }
 
+    /// 内部连接（connect_to_any / 重试重连路径）：与显式 connect 保持
+    /// 一致的保活行为 —— 此前这些入口不启动心跳，同一客户端两条入口
+    /// 保活行为不同 (CODE_REVIEW P2-1)
+
     /// 连接到任意可用服务器
     ///
     /// 遍历顺序: 上次成功服务器 → 用户自定义列表 → PRIMARY_SERVERS → ALL_KNOWN_SERVERS
@@ -123,7 +127,7 @@ impl TdxHqClient {
             let last = self.last_server.lock().unwrap_or_else(|e| e.into_inner()).clone();
             if let Some((ref ip, port)) = last {
                 if !self.is_server_blocked(ip, port) {
-                    if let Ok(true) = self.connect_internal(ip, port, timeout, false) { return Ok(true) }
+                    if let Ok(true) = self.connect_internal(ip, port, timeout, true) { return Ok(true) }
                 }
             }
         }
@@ -135,7 +139,7 @@ impl TdxHqClient {
                 if self.is_server_blocked(ip, *port) {
                     continue;
                 }
-                match self.connect_internal(ip, *port, timeout, false) {
+                match self.connect_internal(ip, *port, timeout, true) {
                     Ok(true) => return Ok(true),
                     _ => continue,
                 }
@@ -147,7 +151,7 @@ impl TdxHqClient {
             if self.is_server_blocked(ip, port) {
                 continue;
             }
-            match self.connect_internal(ip, port, timeout, false) {
+            match self.connect_internal(ip, port, timeout, true) {
                 Ok(true) => return Ok(true),
                 _ => continue,
             }
@@ -158,7 +162,7 @@ impl TdxHqClient {
             if self.is_server_blocked(ip, port) {
                 continue;
             }
-            match self.connect_internal(ip, port, timeout, false) {
+            match self.connect_internal(ip, port, timeout, true) {
                 Ok(true) => return Ok(true),
                 _ => continue,
             }
@@ -381,6 +385,10 @@ impl TdxHqClient {
     /// 设置连接超时 (秒)
     pub fn set_connect_timeout(&self, timeout: f64) {
         *self.connect_timeout.lock().unwrap_or_else(|e| e.into_inner()) = timeout;
+        // 同步传播到池配置：池内新建连接此前固定用 PoolConfig 的初始值
+        // (CODE_REVIEW P2-1)
+        let pool = Arc::clone(&self.pool.lock().unwrap_or_else(|e| e.into_inner()));
+        pool.set_connect_timeout(timeout);
     }
 
     /// 获取连接池状态
@@ -645,7 +653,7 @@ impl TdxHqClient {
 
         // 1) 先试上次服务器 (可能临时故障已恢复)
         if let Some((ref ip, port)) = last {
-            if self.connect_internal(ip, port, Some(CONNECT_TIMEOUT), false).is_ok() {
+            if self.connect_internal(ip, port, Some(CONNECT_TIMEOUT), true).is_ok() {
                 return;
             }
         }
@@ -658,7 +666,7 @@ impl TdxHqClient {
             let list = self.server_list.lock().unwrap_or_else(|e| e.into_inner());
             for (_, ip, port) in list.iter() {
                 if Some((ip.as_str(), *port)) == skip { continue; }
-                if self.connect_internal(ip, *port, Some(CONNECT_TIMEOUT), false).is_ok() {
+                if self.connect_internal(ip, *port, Some(CONNECT_TIMEOUT), true).is_ok() {
                     return;
                 }
             }
@@ -666,14 +674,14 @@ impl TdxHqClient {
         // PRIMARY (跳过失败的)
         for &(_, ip, port) in PRIMARY_SERVERS {
             if Some((ip, port)) == skip { continue; }
-            if self.connect_internal(ip, port, Some(CONNECT_TIMEOUT), false).is_ok() {
+            if self.connect_internal(ip, port, Some(CONNECT_TIMEOUT), true).is_ok() {
                 return;
             }
         }
         // ALL_KNOWN (跳过失败的)
         for &(_, ip, port) in ALL_KNOWN_SERVERS {
             if Some((ip, port)) == skip { continue; }
-            if self.connect_internal(ip, port, Some(CONNECT_TIMEOUT), false).is_ok() {
+            if self.connect_internal(ip, port, Some(CONNECT_TIMEOUT), true).is_ok() {
                 return;
             }
         }
@@ -777,7 +785,7 @@ impl TdxHqClient {
                 continue;
             }
 
-            if self.connect_internal(ip, port, Some(CONNECT_TIMEOUT), false).is_ok() {
+            if self.connect_internal(ip, port, Some(CONNECT_TIMEOUT), true).is_ok() {
                 logi!("hq", "switched to server {}:{}", ip, port);
                 return;
             }
