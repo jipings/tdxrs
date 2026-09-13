@@ -113,6 +113,8 @@ impl ConnectionTask {
         let mut buf = vec![0u8; len];
         let mut total = 0;
         while total < len {
+            // 读超时：此前直接 read().await，服务器僵死则请求永久挂起并
+            // 堵死整条连接 (CODE_REVIEW P1-3)。行情响应毫秒级，30s 极宽松。
             let n = self.stream.read(&mut buf[total..]).await
                 .map_err(|e| TdxError::Connection(format!("recv: {}", e)))?;
             if n == 0 {
@@ -446,15 +448,19 @@ impl AsyncTdxHqClient {
     }
 
     /// 单次尝试: 通过通道发送请求到连接 task
+    ///
+    /// 锁内只取出发送端并立即放锁，等待响应在锁外进行 —— 此前守卫
+    /// 跨 rx_reply.await 存活，任一时刻仅一个请求能进入，实际完全
+    /// 串行，connect/disconnect/心跳也被在途请求堵塞 (CODE_REVIEW P1-1)
     async fn try_send(&self, packet: &[u8]) -> Result<Vec<u8>> {
-        let conns = self.connections.lock().await;
-        if conns.is_empty() {
-            return Err(TdxError::Disconnected);
-        }
-
-        // 轮转选择连接
-        let idx = self.next_idx.fetch_add(1, Ordering::Relaxed) % conns.len();
-        let handle = &conns[idx];
+        let (tx, n_conns, idx) = {
+            let conns = self.connections.lock().await;
+            if conns.is_empty() {
+                return Err(TdxError::Disconnected);
+            }
+            let idx = self.next_idx.fetch_add(1, Ordering::Relaxed) % conns.len();
+            (conns[idx].tx.clone(), conns.len(), idx)
+        };
 
         let (tx_reply, rx_reply) = oneshot::channel();
         let req = Request {
@@ -463,16 +469,22 @@ impl AsyncTdxHqClient {
         };
 
         // 发送请求 (如果通道满则尝试下一个连接)
-        if handle.tx.try_send(req).is_err() {
+        if tx.try_send(req).is_err() {
             // 通道满或已关闭，尝试下一个
-            let next = (idx + 1) % conns.len();
-            if next != idx {
+            if n_conns > 1 {
+                let tx_next = {
+                    let conns = self.connections.lock().await;
+                    if conns.is_empty() {
+                        return Err(TdxError::Disconnected);
+                    }
+                    conns[(idx + 1) % conns.len()].tx.clone()
+                };
                 let (tx_reply2, rx_reply2) = oneshot::channel();
                 let req2 = Request {
                     data: packet.to_vec(),
                     reply: tx_reply2,
                 };
-                conns[next].tx.try_send(req2)
+                tx_next.try_send(req2)
                     .map_err(|_| TdxError::Connection("all connections busy".into()))?;
                 return rx_reply2.await
                     .map_err(|_| TdxError::Disconnected)?;
