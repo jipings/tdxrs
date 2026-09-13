@@ -1,5 +1,63 @@
 # 变更日志
 
+## v0.7.0 (2026-09-13) — 全面健壮性修复：死锁/panic 清零 + GIL 释放 + 数据正确性
+
+本版本为一次**系统性代码审查驱动的修复版本**（详见仓库内 `docs/CODE_REVIEW.md` 审查记录，共 29 项首轮问题 + 复审 3 项残留全部修复）。含行为变更，故升 minor 位。
+
+### 修复 — 确定性崩溃/死锁（P0）
+
+- **`connect_to_any` 断线重连自死锁** — 持 `last_server` 锁期间调用 `connect_internal`（内部再次加同一把锁），重连上次成功服务器时线程永久挂死。改为先 clone 放锁再连接。
+- **连接池计数器双 bug** — ① `close_all` 清零 `active` 使在途连接归还时下溢 panic（且持锁 panic 毒化互斥锁，全池连锁崩溃）；② 借出连接失败不回滚 `total`/`active`，失败 5 次后池永久 `POOL_EXHAUSTED`。改饱和减法 + 失败回滚。
+- **`parse_security_quotes` 截断响应越界 panic** — 行情快照是最高频 API，恶意/损坏服务器注入截断包即可 DoS 客户端。记录边界守卫 30→56 字节、尾部定长字段带检查读取。
+- **`probe_servers` 探测路径 panic** — 第二段 API 探测 7 处 unwrap，任一被探测公网服务器闪断即 `PanicException`（Python 侧 `except Exception` 捕获不到）。改 Result 容错，中途断连的服务器跳过不进榜。
+- **分时/逐笔 delta 累加器 i64 溢出** — 恶意 varint 累加触发 overflow panic（debug）或静默回绕错值（release）。4 处改 `saturating_add`，配套新增确定性 fuzz 测试（畸形字节过 13 个解析器不得 panic）。
+- **`get_price` varint 第 10 个续字节起移位溢出** — shift≥64 在 overflow-checks 构建下 panic。加截断守卫。
+
+### 修复 — 数据正确性（P0）
+
+- **Downloader `update()` 增量更新抹掉历史** — `.day`（默认格式）与 parquet 增量时被全量重写为仅剩新增记录，历史数据永久丢失。`.day` 改定长追加、parquet 改读旧表合并；CSV 原本正确。
+- **`_write_minute_csv` 时间标签整体错位** — 丢弃记录自带 `time` 字段、按固定 242 槽位升序贴标签，第 0 行（实为 15:00）被写成 09:30。改用自带字段。
+- **CLI `tdxrs parse --type block` 必崩** — 参数个数与字段名双错（`TypeError` / 输出全空）。
+- **CLI `--servers` 参数格式与 ServerPool 不匹配** — download/update/download-xdxr 子命令不可用。
+- **HFQ 复权零因子污染** — 垃圾除权数据使 `1.0/0 = inf` 传播到全部价格。加 `is_finite` + 阈值双守卫。
+- **股票代码静默截断/补零** — `code_bytes` 现严格校验（6 位 ASCII 数字），畸形输入返回带错误码的异常而非发往服务器。
+
+### 修复 — 网络与并发（P1）
+
+- **async 客户端实际完全串行** — `try_send` 持全局连接锁跨网络 await；心跳同模式持锁跨 5s 超时，周期性全局停顿。锁内取发送端后立即放锁。
+- **async 无读超时 + 断线不重连** — 读包 30s 超时；重试前检查 `connected` 并重连；重试耗尽返回末次错误。
+- **TCP 连接阶段无超时** — 阻塞式 connect 最坏挂 ~2 分钟，`connect_to_any` 遍历 111 台服务器可挂数小时。改 `connect_timeout`。
+- **zlib 解压无上限且不校验 `unzip_size`** — 64KB 压缩包可膨胀 ~67MB（zip bomb 面）。解压收敛到单一实现：声明长度 + 余量上限，超限报错。
+- **非法 timeout 参数 panic** — Python 传入负数/NaN 的 `from_secs_f64` panic。入口校验 + 上界钳制 86400s。
+- **池复用不按服务器匹配 + `is_open` 判活失效** — 切服后可能复用旧服务器连接发包；`peer_addr().is_ok()` 对死连接恒真。按目标服务器过滤 idle；`is_open` 改错误标志 + `take_error` 组合判定。
+
+### 修复 — GIL 释放（P0/P1 复审）
+
+- **全项目 0 处 → 全覆盖 `py.detach`** — 此前所有 `#[pymethods]` 在持 GIL 状态下执行阻塞网络/文件 I/O（`probe_servers` 最坏 ~162s 冻结全部 Python 线程）。分三批接入：首批 54 处 + 复审补漏（async 20 处 `block_on`、`get_finance_info_dataframe` 串行循环、fund/smart connect、`probe_and_cache`）+ 终审补漏（`calc_fq_factors` 三连拉取、三个 `*_dataframe` 变体、`get_security_count`、`TdxDirectClient` 全部 9 个裸连接方法）。GIL 释放经后台线程满速计数功能验证（8 组场景含 30 页 context 拉取）。
+
+### 修复 — 其他（P2 摘要）
+
+- 同步/async 语义统一：`connect_to_any` 短路 + last-server 缓存 + 统一启心跳；`set_phase` 乘数制不覆盖用户基准（未知值抛 `PyValueError`）；`set_connect_timeout` 传播池配置
+- 重试仅对连接类瞬态错误生效，不再对解析失败无意义换服
+- 心跳停止 200ms 粒度可中断，`disconnect()` 不再最坏阻塞 ~60s
+- 95 处 `lock().unwrap()` 改锁中毒免疫（`into_inner`）
+- Downloader 断点续传从"只写不读"变为真实生效（checkpoint 读入 + resume）
+- doctest 7 处编译失败修复（示例签名与实际不符）
+
+### 新增 — 测试
+
+- **fuzz 测试** — 确定性畸形字节语料（全 0xFF、高位连续置位 varint）过 13 个解析器不得 panic
+- **CLI/Downloader 冒烟测试 10 例** — 增量保留历史、分钟 CSV 时间对齐、checkpoint 回环、CLI parse/servers/北交所归属等端到端钉住（`pytest tests/test_smoke.py`，无网自动跳过）
+- **连接池回归测试** — 失败回滚计数、close_all 后归还不下溢、跨服务器 idle 不复用
+
+### 升级注意（行为变更）
+
+- **版本号 0.6.7 → 0.7.0**：v0.6.7 tag 后有 33 个修复提交，含多个 P0 与行为变更，勿对已发布的 0.6.7 重复打 tag
+- **`TdxF10Client` 不再随 pip 包发布（合规）**：`f10` 从 cargo default features 移出——F10 资讯涉第三方内容版权，回到"需源码编译"口径（`maturin develop --release --features f10`）。此前 0.6.7 曾短暂默认开启随 wheel 发布；依赖该路径的用户需改从源码构建。pip 包中 import 将得到带指引的 ImportError
+- `probe_servers` 返回条数可能变少（中途断连的服务器不再进榜，带垃圾延迟值会误导排序）
+- 畸形输入（截断响应、恶意 varint）从 panic/回绕变为受限值 + 错误返回
+- 未知 `set_phase` 值从静默忽略变为抛 `ValueError`
+
 ## v0.6.7 (2026-07-21) — 日K空响应自动重试 + SmartClient + 服务器黑名单
 
 ### 新增
@@ -54,12 +112,6 @@
 - **`FqContextTier` 复权上下文档位配置** — 支持三档配置
   - `Low`: 约 10 年 (2400 根) `Mid`: 约 20 年 (4800 根，默认) `High`: 约 30 年 (7200 根)
   - 客户端方法：`set_fq_context_tier()` / `fq_context_tier()`
-- **`TdxSmartClient` 智能连接客户端** — 分层健康检查 + 本地缓存 (2026-07-21)
-  - 快速初始连接: 仅验证 TCP + 握手，不做 K 线健康检查
-  - 惰性健康检查: 首次 K 线请求返回空时触发，自动切换服务器
-  - 本地缓存: 记录成功/失败服务器，下次连接优先使用缓存
-  - 黑名单机制: 连续失败的服务器自动加入黑名单 (24h 过期)
-  - Python 绑定：`client = tdxrs.TdxSmartClient()`
 
 ### 优化
 - **复权上下文获取优化** — `fetch_context_bars_for_adjust` 支持可配置的翻页数
