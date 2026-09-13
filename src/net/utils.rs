@@ -407,9 +407,13 @@ pub const DECOMPRESS_ABS_LIMIT: usize = 8 * 1024 * 1024;
 /// 单个恶意响应可解出 ~67MB；此前 read_to_end 不设上限且从不与头部
 /// unzip_size 比对 (CODE_REVIEW P1-5)。
 pub fn decompress_zlib_checked(data: &[u8], unzip_size: u32) -> Result<Vec<u8>> {
-    let limit = (unzip_size as usize)
-        .saturating_add(1024)
-        .min(DECOMPRESS_ABS_LIMIT);
+    // 有声明长度时适度余量校验；无声明（=0，如证券列表接口）退化为
+    // 绝对上限 —— 此前 0+1024 的 margin 误伤 1025B 的合法响应
+    let limit = if unzip_size > 0 {
+        (unzip_size as usize).saturating_add(4096).min(DECOMPRESS_ABS_LIMIT)
+    } else {
+        DECOMPRESS_ABS_LIMIT
+    };
     let decoder = ZlibDecoder::new(data);
     let mut out = Vec::new();
     decoder
