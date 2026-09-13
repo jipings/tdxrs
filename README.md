@@ -33,14 +33,15 @@ quotes = client.get_security_quotes([
 ### F10 资讯 (公司资料)
 
 ```python
-from tdxrs import TdxF10Client
+from tdxrs import TdxF10Client   # 仅 --features f10 构建可用
 
 f10 = TdxF10Client("59.36.5.11", 7709)
 cats = f10.get_category_auto("000001")            # 12 个栏目 (最新提示/公司概况/财务分析/股东研究/热点题材/公司公告...)
 content = f10.get_content_by_name(0, "000001", "公司概况")  # 栏目全文
 ```
 
-> `TdxF10Client` 由 cargo feature `f10` 启用（默认开启）。
+> **F10 不随 pip 包发布**（资讯涉第三方内容版权）。需从源码编译启用：
+> `maturin develop --release --features f10`。pip 安装版 import 时会得到带指引的 ImportError。详见 [F10 模块文档](docs/public/F10.md)。
 
 ---
 
@@ -149,7 +150,7 @@ TDX 服务端返回未复权原始数据。tdxrs 在客户端自行计算前复�
 - 自动补全早期除权事件 (context_bars 机制)
 - `fq=0` 路径零额外开销
 
-### 四种客户端方案
+### 六种客户端方案
 
 | 客户端 | 策略 | 场景 |
 |-------|------|------|
@@ -157,26 +158,40 @@ TDX 服务端返回未复权原始数据。tdxrs 在客户端自行计算前复�
 | `TdxHqFundClient` | 共享连接池 + 基金代码验证 | 基金数据 |
 | `TdxDirectClient` | 每请求独立 TCP（无需 disconnect） | 高并发 (60线程零退化) |
 | `AsyncTdxHqClient` | tokio 异步 + 心跳 | 内部并发（**Python API 同步**，方法非 coroutine，勿 await） |
+| `TdxSmartClient` | 分层健康检查 + 本地缓存 + 黑名单 | 自动择优服务器 (类 mootdx bestip) |
+| `TdxBlockClient` | 板块文件下载与解析 | 板块数据 |
 
 ### 请求限流
 
-内置交易时段自适应限流，保护服务器：
+内置限流保护服务器，两个客户端方式不同：
 
-| 时段 | 默认限流 | 说明 |
+| 客户端 | 方式 |
+|-------|------|
+| `TdxHqClient` | 固定速率 `set_rate_limit(rps)` + 每日总量 `set_rate_limit_daily(rps)` |
+| `AsyncTdxHqClient` | 交易时段自适应（基于基准速率的乘数） |
+
+`AsyncTdxHqClient` 时段自适应限流（默认基准 20 req/s）：
+
+| 时段 | 限流 | 说明 |
 |------|:--------:|------|
-| 盘中 (9:30-15:00) | 15 req/s | 交易活跃期 |
-| 盘前/盘后 | 30 req/s | 过渡时段 |
-| 休市 | 60 req/s | 非交易日 |
+| 盘中 (9:30-15:00) | 20 req/s (基准 ×1) | 交易活跃期 |
+| 盘前/盘后 | 40 req/s (基准 ×2) | 过渡时段 |
+| 休市 | 80 req/s (基准 ×4) | 非交易日 |
 
 ```python
+# 同步客户端: 固定速率
 client = TdxHqClient()
 client.connect_to_any()
-client.auto_detect_phase()  # 自动检测当前时段
-# 或手动设置
-client.set_phase("trading")  # trading / prepost / closed
+client.set_rate_limit(30)      # 30 req/s
+
+# 异步客户端: 时段自适应 (auto_detect_phase / set_phase 是它的方法)
+ac = AsyncTdxHqClient()
+ac.connect_to_any()
+ac.auto_detect_phase()          # 自动检测当前时段
+ac.set_phase("trading")         # 或手动 trading / prepost / closed
 ```
 
-> 每连接独立限流，4 连接池实际吞吐 ×4。批量行情单次上限 60 只，超出自动截断。
+> 每连接独立限流，`TdxHqClient` 连接池(5)实际吞吐 ×5、`AsyncTdxHqClient` 4 连接 ×4。批量行情单次上限 60 只，超出自动截断。
 
 ### 本地文件解析
 
@@ -212,7 +227,7 @@ dl.download_ticks(dates=["2026-06-25"], codes=["600519"])
 tdxrs quote 600519,000858          # 实时行情
 tdxrs bars 600519 --count 30 --fq 1  # K线 (前复权)
 tdxrs trades 600519 --count 100      # 逐笔成交
-tdxrs download --market sh --category daily  # 批量下载
+tdxrs update --market sh --category day  # 增量更新 (category 用 day/week/5min 等)
 tdxrs servers                        # 测试服务器
 ```
 
@@ -300,9 +315,9 @@ df = reader.to_dataframe(open("600519.day", "rb").read())
 
 ```
 语言:    Rust 2021 edition, 0 行 unsafe
-测试:    139 个单元/集成测试
-依赖:    6 个核心 crate (pyo3, flate2, tokio, serde, thiserror, encoding_rs)
-文档:    12 篇维护文档 (6 public + 6 internal)
+测试:    239 个单元/集成/doctest 测试 (另 15 个网络集成 + 10 个 Python 冒烟)
+依赖:    8 个核心 crate (pyo3, flate2, tokio, serde, serde_json, thiserror, encoding_rs, regex)
+文档:    13 篇维护文档 (10 public + 3 开发)
 ```
 
 ---
@@ -311,7 +326,7 @@ df = reader.to_dataframe(open("600519.day", "rb").read())
 
 ```mermaid
 flowchart TD
-    U["👤 用户代码"] --> API["Python API — 5 客户端 + 4 Reader"]
+    U["👤 用户代码"] --> API["Python API — 6 客户端 + 5 Reader"]
     API --> B["PyO3 绑定层"]
     B --> NET["Net 网络层 — 连接池 / 独立连接 / 异步"]
     B --> RDR["Reader 解析层 — 日线 / 分钟线 / 板块 / 财务"]
@@ -339,7 +354,7 @@ flowchart TD
     class S1,S2 src
 ```
 
-**客户端**：`TdxHqClient`（连接池 + 心跳 + 重试）、`TdxHqFundClient`（基金专用）、`TdxDirectClient`（独立连接，高并发）、`AsyncTdxHqClient`（tokio 异步）
+**客户端**：`TdxHqClient`（连接池 + 心跳 + 重试）、`TdxHqFundClient`（基金专用）、`TdxDirectClient`（独立连接，高并发）、`AsyncTdxHqClient`（tokio 异步）、`TdxSmartClient`（健康检查 + 缓存择优）、`TdxBlockClient`（板块文件）；另 `TdxF10Client`（F10 资讯，需 `--features f10` 源码编译）
 
 **Reader**：`DailyBarReader`（.day 日线）、`MinBarReader` / `LcMinBarReader`（.lc5 分钟线）、`BlockReader`（.dat 板块）、`FinancialReader`（gpcw 财务）
 

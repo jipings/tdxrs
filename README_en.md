@@ -121,34 +121,48 @@ TDX servers return unadjusted raw data. tdxrs computes forward/backward adjustme
 - Automatic backfilling of early ex-dividend events (context_bars mechanism)
 - Zero overhead on the `fq=0` (unadjusted) path
 
-### Four Client Strategies
+### Six Client Strategies
 
 | Client | Strategy | Use Case |
 |--------|----------|----------|
 | `TdxHqClient` | Pool(5) + heartbeat + retry + cache | Primary, sequential requests |
 | `TdxHqFundClient` | Shared pool + fund code validation | Fund data |
 | `TdxDirectClient` | Standalone TCP per request | High concurrency (60 threads, no degradation) |
-| `AsyncTdxHqClient` | tokio async + heartbeat | Async ecosystem integration |
+| `AsyncTdxHqClient` | tokio async + heartbeat | Internal concurrency (**Python API is synchronous** — methods are not coroutines, do not await) |
+| `TdxSmartClient` | Layered health checks + local cache + blacklist | Automatic best-server selection (like mootdx bestip) |
+| `TdxBlockClient` | Block file download & parsing | Block data |
 
 ### Rate Limiting
 
-Built-in adaptive rate limiting by trading session to protect servers:
+Built-in rate limiting to protect servers; the two clients differ:
 
-| Session | Default Rate | Description |
+| Client | Mechanism |
+|--------|-----------|
+| `TdxHqClient` | Fixed rate `set_rate_limit(rps)` + daily cap `set_rate_limit_daily(rps)` |
+| `AsyncTdxHqClient` | Session-adaptive (multiplier over your base rate) |
+
+`AsyncTdxHqClient` session-adaptive rates (default base 20 req/s):
+
+| Session | Rate | Description |
 |---------|:-----------:|-------------|
-| Trading (9:30-15:00) | 15 req/s | Active trading hours |
-| Pre/Post market | 30 req/s | Transition periods |
-| Closed | 60 req/s | Non-trading days |
+| Trading (9:30-15:00) | 20 req/s (base ×1) | Active trading hours |
+| Pre/Post market | 40 req/s (base ×2) | Transition periods |
+| Closed | 80 req/s (base ×4) | Non-trading days |
 
 ```python
+# Sync client: fixed rate
 client = TdxHqClient()
 client.connect_to_any()
-client.auto_detect_phase()  # auto-detect current session
-# or set manually
-client.set_phase("trading")  # trading / prepost / closed
+client.set_rate_limit(30)       # 30 req/s
+
+# Async client: session-adaptive (auto_detect_phase / set_phase belong to it)
+ac = AsyncTdxHqClient()
+ac.connect_to_any()
+ac.auto_detect_phase()         # auto-detect current session
+ac.set_phase("trading")        # or manually: trading / prepost / closed
 ```
 
-> Rate limiting is per-connection; a 4-connection pool yields 4x throughput. Batch quotes are capped at 60 per request with automatic truncation.
+> Rate limiting is per-connection; `TdxHqClient`'s pool(5) yields 5x throughput, `AsyncTdxHqClient`'s 4 connections yield 4x. Batch quotes are capped at 60 per request with automatic truncation.
 
 ### Local File Parsing
 
@@ -184,7 +198,7 @@ Query market data directly from the terminal:
 tdxrs quote 600519,000858          # Real-time quotes
 tdxrs bars 600519 --count 30 --fq 1  # K-line (forward-adjusted)
 tdxrs trades 600519 --count 100      # Tick data
-tdxrs download --market sh --category daily  # Batch download
+tdxrs update --market sh --category day  # Incremental update (category: day/week/5min etc.)
 tdxrs servers                        # Test server connectivity
 ```
 
@@ -272,8 +286,8 @@ df = reader.to_dataframe(open("600519.day", "rb").read())
 
 ```
 Language:  Rust 2021 edition, zero unsafe
-Tests:     139 unit / integration tests
-Deps:      6 core crates (pyo3, flate2, tokio, serde, thiserror, encoding_rs)
+Tests:     239 unit / integration / doctest tests (+15 network-gated integration +10 Python smoke)
+Deps:      8 core crates (pyo3, flate2, tokio, serde, serde_json, thiserror, encoding_rs, regex)
 Docs:      12 maintained documents (6 public + 6 internal)
 ```
 
@@ -283,7 +297,7 @@ Docs:      12 maintained documents (6 public + 6 internal)
 
 ```mermaid
 flowchart TD
-    U["👤 User Code"] --> API["Python API — 5 Clients + 4 Readers"]
+    U["👤 User Code"] --> API["Python API — 6 Clients + 5 Readers"]
     API --> B["PyO3 Binding Layer"]
     B --> NET["Net — Pool / Direct / Async"]
     B --> RDR["Reader — Daily / Minute / Sector / Financial"]
