@@ -317,7 +317,9 @@ impl CodeType {
 
 /// 分类股票代码
 pub fn classify_code(code: &str) -> CodeType {
-    if code.len() != 6 {
+    // len() 是字节数，多字节字符（如两个汉字恰好 6 字节）按字节切片
+    // 会 panic；先校验 ASCII (CODE_REVIEW P2-6)
+    if code.len() != 6 || !code.is_ascii() {
         return CodeType::Unknown;
     }
 

@@ -251,13 +251,29 @@ impl RateLimiter {
 // 股票代码编解码
 // ================================================================
 
-/// 股票代码 → 6 字节定长数组
+/// 股票代码 → 6 字节定长数组（宽松：截断/补零，供内部使用）
 pub fn code_bytes(code: &str) -> [u8; 6] {
     let mut buf = [0u8; 6];
     let bytes = code.as_bytes();
     let len = bytes.len().min(6);
     buf[..len].copy_from_slice(&bytes[..len]);
     buf
+}
+
+/// 股票代码校验 + 编码（严格）
+///
+/// 此前畸形代码被静默截断/补零后发给真实服务器（"1234567"→"123456"，
+/// "abc"→补零），行为依赖服务端容错 (CODE_REVIEW P2-6)。
+/// 规则：恰好 6 位 ASCII 数字或大写字母（兼容 8 开头北交所字母代码惯例）。
+pub fn code_bytes_strict(code: &str) -> Result<[u8; 6]> {
+    let bytes = code.as_bytes();
+    if bytes.len() != 6 || !bytes.iter().all(|&b| b.is_ascii_alphanumeric()) {
+        return Err(crate::error_codes::ErrorCode::INVALID_STOCK_CODE
+            .err(format!("invalid stock code {:?}: expect 6 ASCII alphanumerics", code)));
+    }
+    let mut buf = [0u8; 6];
+    buf.copy_from_slice(bytes);
+    Ok(buf)
 }
 
 // ================================================================

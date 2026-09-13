@@ -692,6 +692,7 @@ impl TdxHqClient {
         fq: u8,
     ) -> Result<Vec<SecurityBar>> {
         self.check_not_block_code(code)?;
+        utils::code_bytes_strict(code)?;
 
         // 日K线空响应自动重试 (仅对日K及以上周期，分钟线不重试)
         let should_retry_empty = category >= 4;
@@ -1023,9 +1024,10 @@ impl TdxHqClient {
         &self,
         all_stock: &[(u8, &str)],
     ) -> Result<Vec<SecurityQuote>> {
-        // 检查是否有板块代码
+        // 检查是否有板块代码 + 严格代码校验
         for &(_, code) in all_stock {
             self.check_not_block_code(code)?;
+            utils::code_bytes_strict(code)?;
         }
         if all_stock.len() <= MAX_QUOTES_COUNT {
             return self.get_security_quotes_batch(all_stock);
@@ -1161,7 +1163,7 @@ impl TdxHqClient {
         code: &str,
         date: u32,
     ) -> Result<Vec<MinuteTimePrice>> {
-        let code_buf = utils::code_bytes(code);
+        let code_buf = utils::code_bytes_strict(code)?;
         let mut packet = Vec::with_capacity(23);
         packet.extend_from_slice(&[
             0x0c, 0x01, 0x30, 0x00, 0x01, 0x01, 0x0d, 0x00, 0x0d, 0x00, 0xb4, 0x0f,
@@ -1182,7 +1184,7 @@ impl TdxHqClient {
         start: u16,
         count: u16,
     ) -> Result<Vec<TickData>> {
-        let code_buf = utils::code_bytes(code);
+        let code_buf = utils::code_bytes_strict(code)?;
         let mut packet = Vec::with_capacity(24);
         packet.extend_from_slice(&[
             0x0c, 0x17, 0x08, 0x01, 0x01, 0x01, 0x0e, 0x00, 0x0e, 0x00, 0xc5, 0x0f,
@@ -1206,7 +1208,7 @@ impl TdxHqClient {
         count: u16,
         date: u32,
     ) -> Result<Vec<TickData>> {
-        let code_buf = utils::code_bytes(code);
+        let code_buf = utils::code_bytes_strict(code)?;
         let mut packet = Vec::with_capacity(28);
         packet.extend_from_slice(&[
             0x0c, 0x01, 0x30, 0x01, 0x00, 0x01, 0x12, 0x00, 0x12, 0x00, 0xb5, 0x0f,
@@ -1227,7 +1229,7 @@ impl TdxHqClient {
 
     /// 获取财务信息
     pub fn get_finance_info(&self, market: u8, code: &str) -> Result<FinanceInfo> {
-        let code_buf = utils::code_bytes(code);
+        let code_buf = utils::code_bytes_strict(code)?;
         let mut packet = Vec::with_capacity(21);
         packet.extend_from_slice(&[
             0x0c, 0x1f, 0x18, 0x76, 0x00, 0x01, 0x0b, 0x00, 0x0b, 0x00, 0x10, 0x00, 0x01, 0x00,
@@ -1241,7 +1243,7 @@ impl TdxHqClient {
 
     /// 获取除权除息
     pub fn get_xdxr_info(&self, market: u8, code: &str) -> Result<Vec<XdXrInfo>> {
-        let code_buf = utils::code_bytes(code);
+        let code_buf = utils::code_bytes_strict(code)?;
         let mut packet = Vec::with_capacity(21);
         packet.extend_from_slice(&[
             0x0c, 0x1f, 0x18, 0x76, 0x00, 0x01, 0x0b, 0x00, 0x0b, 0x00, 0x0f, 0x00, 0x01, 0x00,
