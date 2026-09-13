@@ -25,18 +25,18 @@ fn make_dataframe(py: Python<'_>, columns: Vec<(&str, Vec<Py<PyAny>>)>) -> PyRes
 
 pub fn security_bars_to_df(py: Python<'_>, bars: &[SecurityBar]) -> PyResult<Py<PyAny>> {
     let n = bars.len();
-    let mut opens       = Vec::with_capacity(n);
-    let mut closes      = Vec::with_capacity(n);
-    let mut highs        = Vec::with_capacity(n);
-    let mut lows         = Vec::with_capacity(n);
-    let mut vols         = Vec::with_capacity(n);
-    let mut amounts      = Vec::with_capacity(n);
-    let mut years        = Vec::with_capacity(n);
-    let mut months       = Vec::with_capacity(n);
-    let mut days         = Vec::with_capacity(n);
-    let mut hours        = Vec::with_capacity(n);
-    let mut minutes      = Vec::with_capacity(n);
-    let mut datetimes    = Vec::with_capacity(n);
+    let mut opens = Vec::with_capacity(n);
+    let mut closes = Vec::with_capacity(n);
+    let mut highs = Vec::with_capacity(n);
+    let mut lows = Vec::with_capacity(n);
+    let mut vols = Vec::with_capacity(n);
+    let mut amounts = Vec::with_capacity(n);
+    let mut years = Vec::with_capacity(n);
+    let mut months = Vec::with_capacity(n);
+    let mut days = Vec::with_capacity(n);
+    let mut hours = Vec::with_capacity(n);
+    let mut minutes = Vec::with_capacity(n);
+    let mut datetimes = Vec::with_capacity(n);
 
     for b in bars {
         opens.push(b.open.into_py_any(py)?);
@@ -53,30 +53,41 @@ pub fn security_bars_to_df(py: Python<'_>, bars: &[SecurityBar]) -> PyResult<Py<
         datetimes.push(b.datetime.as_str().into_py_any(py)?);
     }
 
-    make_dataframe(py, vec![
-        ("datetime", datetimes), ("year", years), ("month", months), ("day", days),
-        ("hour", hours), ("minute", minutes),
-        ("open", opens), ("high", highs), ("low", lows), ("close", closes),
-        ("vol", vols), ("amount", amounts),
-    ])
+    make_dataframe(
+        py,
+        vec![
+            ("datetime", datetimes),
+            ("year", years),
+            ("month", months),
+            ("day", days),
+            ("hour", hours),
+            ("minute", minutes),
+            ("open", opens),
+            ("high", highs),
+            ("low", lows),
+            ("close", closes),
+            ("vol", vols),
+            ("amount", amounts),
+        ],
+    )
 }
 
 pub fn index_bars_to_df(py: Python<'_>, bars: &[IndexBar]) -> PyResult<Py<PyAny>> {
     let n = bars.len();
-    let mut opens       = Vec::with_capacity(n);
-    let mut closes      = Vec::with_capacity(n);
-    let mut highs        = Vec::with_capacity(n);
-    let mut lows         = Vec::with_capacity(n);
-    let mut vols         = Vec::with_capacity(n);
-    let mut amounts      = Vec::with_capacity(n);
-    let mut years        = Vec::with_capacity(n);
-    let mut months       = Vec::with_capacity(n);
-    let mut days         = Vec::with_capacity(n);
-    let mut hours        = Vec::with_capacity(n);
-    let mut minutes      = Vec::with_capacity(n);
-    let mut datetimes    = Vec::with_capacity(n);
-    let mut up_counts     = Vec::with_capacity(n);
-    let mut down_counts   = Vec::with_capacity(n);
+    let mut opens = Vec::with_capacity(n);
+    let mut closes = Vec::with_capacity(n);
+    let mut highs = Vec::with_capacity(n);
+    let mut lows = Vec::with_capacity(n);
+    let mut vols = Vec::with_capacity(n);
+    let mut amounts = Vec::with_capacity(n);
+    let mut years = Vec::with_capacity(n);
+    let mut months = Vec::with_capacity(n);
+    let mut days = Vec::with_capacity(n);
+    let mut hours = Vec::with_capacity(n);
+    let mut minutes = Vec::with_capacity(n);
+    let mut datetimes = Vec::with_capacity(n);
+    let mut up_counts = Vec::with_capacity(n);
+    let mut down_counts = Vec::with_capacity(n);
 
     for b in bars {
         opens.push(b.open.into_py_any(py)?);
@@ -95,13 +106,25 @@ pub fn index_bars_to_df(py: Python<'_>, bars: &[IndexBar]) -> PyResult<Py<PyAny>
         down_counts.push(b.down_count.into_py_any(py)?);
     }
 
-    make_dataframe(py, vec![
-        ("datetime", datetimes), ("year", years), ("month", months), ("day", days),
-        ("hour", hours), ("minute", minutes),
-        ("open", opens), ("high", highs), ("low", lows), ("close", closes),
-        ("vol", vols), ("amount", amounts),
-        ("up_count", up_counts), ("down_count", down_counts),
-    ])
+    make_dataframe(
+        py,
+        vec![
+            ("datetime", datetimes),
+            ("year", years),
+            ("month", months),
+            ("day", days),
+            ("hour", hours),
+            ("minute", minutes),
+            ("open", opens),
+            ("high", highs),
+            ("low", lows),
+            ("close", closes),
+            ("vol", vols),
+            ("amount", amounts),
+            ("up_count", up_counts),
+            ("down_count", down_counts),
+        ],
+    )
 }
 
 // ============================================================
@@ -110,19 +133,19 @@ pub fn index_bars_to_df(py: Python<'_>, bars: &[IndexBar]) -> PyResult<Py<PyAny>
 
 pub fn quotes_to_df(py: Python<'_>, quotes: &[SecurityQuote]) -> PyResult<Py<PyAny>> {
     let n = quotes.len();
-    let mut markets     = Vec::with_capacity(n);
-    let mut codes       = Vec::with_capacity(n);
-    let mut prices      = Vec::with_capacity(n);
-    let mut last_close  = Vec::with_capacity(n);
-    let mut opens       = Vec::with_capacity(n);
-    let mut highs        = Vec::with_capacity(n);
-    let mut lows         = Vec::with_capacity(n);
-    let mut vols         = Vec::with_capacity(n);
-    let mut cur_vols     = Vec::with_capacity(n);
-    let mut amounts      = Vec::with_capacity(n);
-    let mut s_vols       = Vec::with_capacity(n);
-    let mut b_vols       = Vec::with_capacity(n);
-    let mut servers      = Vec::with_capacity(n);
+    let mut markets = Vec::with_capacity(n);
+    let mut codes = Vec::with_capacity(n);
+    let mut prices = Vec::with_capacity(n);
+    let mut last_close = Vec::with_capacity(n);
+    let mut opens = Vec::with_capacity(n);
+    let mut highs = Vec::with_capacity(n);
+    let mut lows = Vec::with_capacity(n);
+    let mut vols = Vec::with_capacity(n);
+    let mut cur_vols = Vec::with_capacity(n);
+    let mut amounts = Vec::with_capacity(n);
+    let mut s_vols = Vec::with_capacity(n);
+    let mut b_vols = Vec::with_capacity(n);
+    let mut servers = Vec::with_capacity(n);
 
     for q in quotes {
         markets.push(q.market.into_py_any(py)?);
@@ -140,32 +163,45 @@ pub fn quotes_to_df(py: Python<'_>, quotes: &[SecurityQuote]) -> PyResult<Py<PyA
         servers.push(q.servertime.as_str().into_py_any(py)?);
     }
 
-    make_dataframe(py, vec![
-        ("code", codes), ("market", markets),
-        ("price", prices), ("last_close", last_close),
-        ("open", opens), ("high", highs), ("low", lows),
-        ("vol", vols), ("cur_vol", cur_vols), ("amount", amounts),
-        ("s_vol", s_vols), ("b_vol", b_vols),
-        ("servertime", servers),
-    ])
+    make_dataframe(
+        py,
+        vec![
+            ("code", codes),
+            ("market", markets),
+            ("price", prices),
+            ("last_close", last_close),
+            ("open", opens),
+            ("high", highs),
+            ("low", lows),
+            ("vol", vols),
+            ("cur_vol", cur_vols),
+            ("amount", amounts),
+            ("s_vol", s_vols),
+            ("b_vol", b_vols),
+            ("servertime", servers),
+        ],
+    )
 }
 
 // ============================================================
 // DailyBarRecord DataFrame (Reader)
 // ============================================================
 
-pub fn daily_records_to_df(py: Python<'_>, records: &[crate::reader::daily_bar::DailyBarRecord]) -> PyResult<Py<PyAny>> {
+pub fn daily_records_to_df(
+    py: Python<'_>,
+    records: &[crate::reader::daily_bar::DailyBarRecord],
+) -> PyResult<Py<PyAny>> {
     let n = records.len();
-    let mut dates   = Vec::with_capacity(n);
-    let mut opens   = Vec::with_capacity(n);
-    let mut highs    = Vec::with_capacity(n);
-    let mut lows     = Vec::with_capacity(n);
-    let mut closes  = Vec::with_capacity(n);
-    let mut amounts  = Vec::with_capacity(n);
-    let mut volumes  = Vec::with_capacity(n);
-    let mut years    = Vec::with_capacity(n);
-    let mut months   = Vec::with_capacity(n);
-    let mut days_v   = Vec::with_capacity(n);
+    let mut dates = Vec::with_capacity(n);
+    let mut opens = Vec::with_capacity(n);
+    let mut highs = Vec::with_capacity(n);
+    let mut lows = Vec::with_capacity(n);
+    let mut closes = Vec::with_capacity(n);
+    let mut amounts = Vec::with_capacity(n);
+    let mut volumes = Vec::with_capacity(n);
+    let mut years = Vec::with_capacity(n);
+    let mut months = Vec::with_capacity(n);
+    let mut days_v = Vec::with_capacity(n);
 
     for r in records {
         dates.push(r.date.as_str().into_py_any(py)?);
@@ -180,11 +216,21 @@ pub fn daily_records_to_df(py: Python<'_>, records: &[crate::reader::daily_bar::
         days_v.push(r.day.into_py_any(py)?);
     }
 
-    make_dataframe(py, vec![
-        ("date", dates), ("year", years), ("month", months), ("day", days_v),
-        ("open", opens), ("high", highs), ("low", lows), ("close", closes),
-        ("volume", volumes), ("amount", amounts),
-    ])
+    make_dataframe(
+        py,
+        vec![
+            ("date", dates),
+            ("year", years),
+            ("month", months),
+            ("day", days_v),
+            ("open", opens),
+            ("high", highs),
+            ("low", lows),
+            ("close", closes),
+            ("volume", volumes),
+            ("amount", amounts),
+        ],
+    )
 }
 
 // ============================================================
@@ -193,17 +239,17 @@ pub fn daily_records_to_df(py: Python<'_>, records: &[crate::reader::daily_bar::
 
 pub fn finance_to_df(py: Python<'_>, infos: &[(FinanceInfo,)]) -> PyResult<Py<PyAny>> {
     let n = infos.len();
-    let mut markets         = Vec::with_capacity(n);
-    let mut codes           = Vec::with_capacity(n);
-    let mut zonggubens      = Vec::with_capacity(n);
-    let mut liutonggubens   = Vec::with_capacity(n);
-    let mut jingzichans     = Vec::with_capacity(n);
-    let mut jingliruns      = Vec::with_capacity(n);
-    let mut zhuyingshourus  = Vec::with_capacity(n);
+    let mut markets = Vec::with_capacity(n);
+    let mut codes = Vec::with_capacity(n);
+    let mut zonggubens = Vec::with_capacity(n);
+    let mut liutonggubens = Vec::with_capacity(n);
+    let mut jingzichans = Vec::with_capacity(n);
+    let mut jingliruns = Vec::with_capacity(n);
+    let mut zhuyingshourus = Vec::with_capacity(n);
     let mut meigujingzichans = Vec::with_capacity(n);
-    let mut yingyeliruns    = Vec::with_capacity(n);
-    let mut provinces       = Vec::with_capacity(n);
-    let mut industries      = Vec::with_capacity(n);
+    let mut yingyeliruns = Vec::with_capacity(n);
+    let mut provinces = Vec::with_capacity(n);
+    let mut industries = Vec::with_capacity(n);
 
     for (info,) in infos {
         markets.push(info.market.into_py_any(py)?);
@@ -219,34 +265,45 @@ pub fn finance_to_df(py: Python<'_>, infos: &[(FinanceInfo,)]) -> PyResult<Py<Py
         industries.push(info.industry.into_py_any(py)?);
     }
 
-    make_dataframe(py, vec![
-        ("code", codes), ("market", markets),
-        ("zongguben", zonggubens), ("liutongguben", liutonggubens),
-        ("jingzichan", jingzichans), ("jinglirun", jingliruns),
-        ("zhuyingshouru", zhuyingshourus), ("yingyelirun", yingyeliruns),
-        ("meigujingzichan", meigujingzichans),
-        ("province", provinces), ("industry", industries),
-    ])
+    make_dataframe(
+        py,
+        vec![
+            ("code", codes),
+            ("market", markets),
+            ("zongguben", zonggubens),
+            ("liutongguben", liutonggubens),
+            ("jingzichan", jingzichans),
+            ("jinglirun", jingliruns),
+            ("zhuyingshouru", zhuyingshourus),
+            ("yingyelirun", yingyeliruns),
+            ("meigujingzichan", meigujingzichans),
+            ("province", provinces),
+            ("industry", industries),
+        ],
+    )
 }
 
 // ============================================================
 // MinBarRecord DataFrame
 // ============================================================
 
-pub fn min_records_to_df(py: Python<'_>, records: &[crate::reader::min_bar::MinBarRecord]) -> PyResult<Py<PyAny>> {
+pub fn min_records_to_df(
+    py: Python<'_>,
+    records: &[crate::reader::min_bar::MinBarRecord],
+) -> PyResult<Py<PyAny>> {
     let n = records.len();
-    let mut dates   = Vec::with_capacity(n);
-    let mut opens   = Vec::with_capacity(n);
-    let mut highs    = Vec::with_capacity(n);
-    let mut lows     = Vec::with_capacity(n);
-    let mut closes  = Vec::with_capacity(n);
-    let mut amounts  = Vec::with_capacity(n);
-    let mut volumes  = Vec::with_capacity(n);
-    let mut years    = Vec::with_capacity(n);
-    let mut months   = Vec::with_capacity(n);
-    let mut days_v   = Vec::with_capacity(n);
-    let mut hours    = Vec::with_capacity(n);
-    let mut minutes  = Vec::with_capacity(n);
+    let mut dates = Vec::with_capacity(n);
+    let mut opens = Vec::with_capacity(n);
+    let mut highs = Vec::with_capacity(n);
+    let mut lows = Vec::with_capacity(n);
+    let mut closes = Vec::with_capacity(n);
+    let mut amounts = Vec::with_capacity(n);
+    let mut volumes = Vec::with_capacity(n);
+    let mut years = Vec::with_capacity(n);
+    let mut months = Vec::with_capacity(n);
+    let mut days_v = Vec::with_capacity(n);
+    let mut hours = Vec::with_capacity(n);
+    let mut minutes = Vec::with_capacity(n);
 
     for r in records {
         dates.push(r.date.as_str().into_py_any(py)?);
@@ -263,10 +320,21 @@ pub fn min_records_to_df(py: Python<'_>, records: &[crate::reader::min_bar::MinB
         minutes.push(r.minute.into_py_any(py)?);
     }
 
-    make_dataframe(py, vec![
-        ("date", dates), ("year", years), ("month", months), ("day", days_v),
-        ("hour", hours), ("minute", minutes),
-        ("open", opens), ("high", highs), ("low", lows), ("close", closes),
-        ("volume", volumes), ("amount", amounts),
-    ])
+    make_dataframe(
+        py,
+        vec![
+            ("date", dates),
+            ("year", years),
+            ("month", months),
+            ("day", days_v),
+            ("hour", hours),
+            ("minute", minutes),
+            ("open", opens),
+            ("high", highs),
+            ("low", lows),
+            ("close", closes),
+            ("volume", volumes),
+            ("amount", amounts),
+        ],
+    )
 }

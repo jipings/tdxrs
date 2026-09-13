@@ -53,7 +53,10 @@ pub fn format_date(year: u32, month: u32, day: u32) -> String {
 
 /// 格式化日期时间为 "YYYY-MM-DD HH:MM" 字符串
 pub fn format_datetime(year: u32, month: u32, day: u32, hour: u32, minute: u32) -> String {
-    format!("{:04}-{:02}-{:02} {:02}:{:02}", year, month, day, hour, minute)
+    format!(
+        "{:04}-{:02}-{:02} {:02}:{:02}",
+        year, month, day, hour, minute
+    )
 }
 
 /// 安全的字节切片索引
@@ -97,8 +100,14 @@ pub fn read_i32(data: &[u8], pos: usize) -> i32 {
 #[inline(always)]
 pub fn read_i64(data: &[u8], pos: usize) -> i64 {
     i64::from_le_bytes([
-        data[pos], data[pos + 1], data[pos + 2], data[pos + 3],
-        data[pos + 4], data[pos + 5], data[pos + 6], data[pos + 7],
+        data[pos],
+        data[pos + 1],
+        data[pos + 2],
+        data[pos + 3],
+        data[pos + 4],
+        data[pos + 5],
+        data[pos + 6],
+        data[pos + 7],
     ])
 }
 
@@ -110,7 +119,11 @@ mod tests {
     fn test_max_valid_year_range() {
         let y = max_valid_year();
         // 当前 2026, +10 = 2036. 有效范围: 2036 ~ 2040+
-        assert!((2036..=2050).contains(&y), "max_valid_year={} out of expected range", y);
+        assert!(
+            (2036..=2050).contains(&y),
+            "max_valid_year={} out of expected range",
+            y
+        );
     }
 
     #[test]

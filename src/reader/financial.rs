@@ -30,7 +30,9 @@ pub struct FinancialRecord {
 ///   Report Data: at each offset, report_size/4 little-endian f32 values
 pub fn parse_financial(data: &[u8]) -> Result<Vec<FinancialRecord>> {
     if data.len() < HEADER_SIZE {
-        return Err(TdxError::InvalidData("Financial file too small for header".into()));
+        return Err(TdxError::InvalidData(
+            "Financial file too small for header".into(),
+        ));
     }
 
     // Parse header
@@ -49,7 +51,12 @@ pub fn parse_financial(data: &[u8]) -> Result<Vec<FinancialRecord>> {
         let index_offset = HEADER_SIZE + idx * INDEX_ITEM_SIZE;
         if index_offset + INDEX_ITEM_SIZE > data.len() {
             if idx + 1 < max_count {
-                logw!("reader", "financial 索引截断: 期望 {} 条仅解析 {} 条（文件损坏）", max_count, idx);
+                logw!(
+                    "reader",
+                    "financial 索引截断: 期望 {} 条仅解析 {} 条（文件损坏）",
+                    max_count,
+                    idx
+                );
             }
             break;
         }

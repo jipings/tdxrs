@@ -2,9 +2,9 @@ use std::collections::VecDeque;
 use std::sync::Mutex;
 
 use crate::error::Result;
+use crate::loge;
 use crate::net::connection::TcpConnection;
 use crate::protocol::constants::{CONNECT_TIMEOUT, DEFAULT_POOL_SIZE};
-use crate::loge;
 
 /// 连接池中的单个连接
 struct PooledConnection {
@@ -122,7 +122,10 @@ impl ConnectionPool {
             let conn_result = TcpConnection::connect(
                 &server_clone.0,
                 server_clone.1,
-                *self.connect_timeout.lock().unwrap_or_else(|e| e.into_inner()),
+                *self
+                    .connect_timeout
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner()),
             )
             .and_then(|mut conn| {
                 if has_handshake {
@@ -154,10 +157,16 @@ impl ConnectionPool {
             }
         }
 
-        loge!("pool", "exhausted (active={}, max={})", inner.active, self.config.max_size);
-        Err(crate::error_codes::ErrorCode::POOL_EXHAUSTED.err(
-            format!("active={}, max={}", inner.active, self.config.max_size)
-        ))
+        loge!(
+            "pool",
+            "exhausted (active={}, max={})",
+            inner.active,
+            self.config.max_size
+        );
+        Err(crate::error_codes::ErrorCode::POOL_EXHAUSTED.err(format!(
+            "active={}, max={}",
+            inner.active, self.config.max_size
+        )))
     }
 
     /// 尝试借出连接 (非阻塞)
@@ -194,7 +203,10 @@ impl ConnectionPool {
             let conn_result = TcpConnection::connect(
                 &server_clone.0,
                 server_clone.1,
-                *self.connect_timeout.lock().unwrap_or_else(|e| e.into_inner()),
+                *self
+                    .connect_timeout
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner()),
             )
             .and_then(|mut conn| {
                 if has_handshake {
@@ -257,7 +269,10 @@ impl ConnectionPool {
     /// 更新连接超时（传播给池内后续新建连接）
     pub fn set_connect_timeout(&self, timeout: f64) {
         if timeout.is_finite() && timeout > 0.0 {
-            *self.connect_timeout.lock().unwrap_or_else(|e| e.into_inner()) = timeout;
+            *self
+                .connect_timeout
+                .lock()
+                .unwrap_or_else(|e| e.into_inner()) = timeout;
         }
     }
 
@@ -364,8 +379,16 @@ mod tests {
             assert!(pool.borrow(&("127.0.0.1".into(), 1)).is_err());
         }
         let stats = pool.stats();
-        assert_eq!(stats.total, 0, "失败后 total 应回滚为 0，实际 {}", stats.total);
-        assert_eq!(stats.active, 0, "失败后 active 应回滚为 0，实际 {}", stats.active);
+        assert_eq!(
+            stats.total, 0,
+            "失败后 total 应回滚为 0，实际 {}",
+            stats.total
+        );
+        assert_eq!(
+            stats.active, 0,
+            "失败后 active 应回滚为 0，实际 {}",
+            stats.active
+        );
     }
 
     // CODE_REVIEW P0-3A: close_all 后在途 guard 归还不得使 active 下溢
@@ -381,7 +404,9 @@ mod tests {
             handshake_fn: None,
         };
         let pool = ConnectionPool::new_single(("127.0.0.1".into(), port), config);
-        let guard = pool.borrow(&("127.0.0.1".into(), port)).expect("本地监听连接应成功");
+        let guard = pool
+            .borrow(&("127.0.0.1".into(), port))
+            .expect("本地监听连接应成功");
         pool.close_all(); // 模拟切服：池被清空，guard 仍在途
         drop(guard); // 归还 —— 修复前 active 0-1 panic（持锁毒化互斥锁）
         let stats = pool.stats();
@@ -397,7 +422,11 @@ mod tests {
         let l2 = TcpListener::bind("127.0.0.1:0").unwrap();
         let p2 = l2.local_addr().unwrap().port();
 
-        let config = PoolConfig { max_size: 4, connect_timeout: 1.0, handshake_fn: None };
+        let config = PoolConfig {
+            max_size: 4,
+            connect_timeout: 1.0,
+            handshake_fn: None,
+        };
         let pool = ConnectionPool::new_single(("127.0.0.1".into(), p1), config);
 
         // 建连 A 并手动归还（借出后 drop 归还）

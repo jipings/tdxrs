@@ -16,9 +16,11 @@ pub const RSP_HEADER_LEN: usize = 16;
 impl ResponseHeader {
     pub fn parse(buf: &[u8]) -> Result<Self> {
         if buf.len() < RSP_HEADER_LEN {
-            return Err(ErrorCode::RESPONSE_HEADER_INVALID.err(
-                format!("expected {} bytes, got {}", RSP_HEADER_LEN, buf.len())
-            ));
+            return Err(ErrorCode::RESPONSE_HEADER_INVALID.err(format!(
+                "expected {} bytes, got {}",
+                RSP_HEADER_LEN,
+                buf.len()
+            )));
         }
         // <IIIHH: seq(u32), method(u32), _(u32), zip_size(u16), unzip_size(u16)
         let seq = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
@@ -26,7 +28,12 @@ impl ResponseHeader {
         let _ = u32::from_le_bytes([buf[8], buf[9], buf[10], buf[11]]);
         let zip_size = u16::from_le_bytes([buf[12], buf[13]]) as u32;
         let unzip_size = u16::from_le_bytes([buf[14], buf[15]]) as u32;
-        Ok(Self { seq, method, zip_size, unzip_size })
+        Ok(Self {
+            seq,
+            method,
+            zip_size,
+            unzip_size,
+        })
     }
 }
 
@@ -38,11 +45,11 @@ mod tests {
     fn test_parse_header_basic() {
         // seq=1, method=2, reserved=0, zip_size=100, unzip_size=200
         let buf: [u8; 16] = [
-            1, 0, 0, 0,    // seq = 1
-            2, 0, 0, 0,    // method = 2
-            0, 0, 0, 0,    // reserved
-            100, 0,         // zip_size = 100
-            200, 0,         // unzip_size = 200
+            1, 0, 0, 0, // seq = 1
+            2, 0, 0, 0, // method = 2
+            0, 0, 0, 0, // reserved
+            100, 0, // zip_size = 100
+            200, 0, // unzip_size = 200
         ];
         let header = ResponseHeader::parse(&buf).unwrap();
         assert_eq!(header.seq, 1);
@@ -55,11 +62,7 @@ mod tests {
     fn test_parse_header_large_values() {
         // seq=0xFFFFFFFF, method=0x12345678, zip_size=65535, unzip_size=1000
         let buf: [u8; 16] = [
-            0xFF, 0xFF, 0xFF, 0xFF,
-            0x78, 0x56, 0x34, 0x12,
-            0, 0, 0, 0,
-            0xFF, 0xFF,
-            0xE8, 0x03,
+            0xFF, 0xFF, 0xFF, 0xFF, 0x78, 0x56, 0x34, 0x12, 0, 0, 0, 0, 0xFF, 0xFF, 0xE8, 0x03,
         ];
         let header = ResponseHeader::parse(&buf).unwrap();
         assert_eq!(header.seq, 0xFFFFFFFF);
@@ -85,11 +88,8 @@ mod tests {
     fn test_parse_header_equal_sizes() {
         // zip_size == unzip_size (no compression)
         let buf: [u8; 16] = [
-            0, 0, 0, 0,
-            0, 0, 0, 0,
-            0, 0, 0, 0,
-            0xE8, 0x03,  // 1000
-            0xE8, 0x03,  // 1000
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xE8, 0x03, // 1000
+            0xE8, 0x03, // 1000
         ];
         let header = ResponseHeader::parse(&buf).unwrap();
         assert_eq!(header.zip_size, 1000);

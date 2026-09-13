@@ -15,11 +15,9 @@
 //! - 向后兼容 — 复用 adjuster 模块的算法，不修改底层逻辑
 //! - 单一职责 — 只负责业务编排，不负责具体算法
 
-use crate::protocol::adjuster::{
-    adjust_security_bars, calc_fq_factors, FqFactorResult, FqType,
-};
-use crate::protocol::types::{SecurityBar, XdXrInfo};
 use crate::net::utils::FqContextTier;
+use crate::protocol::adjuster::{adjust_security_bars, calc_fq_factors, FqFactorResult, FqType};
+use crate::protocol::types::{SecurityBar, XdXrInfo};
 
 /// 复权服务 — 统一复权逻辑入口
 pub struct FqService;
@@ -179,7 +177,10 @@ mod tests {
     fn test_auto_detect_tier_high() {
         // 上市 25 年
         let xdxr = vec![make_xdxr(2001, 7, 1, 1)];
-        assert_eq!(FqService::auto_detect_tier(&xdxr, 2026), FqContextTier::High);
+        assert_eq!(
+            FqService::auto_detect_tier(&xdxr, 2026),
+            FqContextTier::High
+        );
     }
 
     #[test]
@@ -207,18 +208,24 @@ mod tests {
     fn test_auto_detect_tier_boundary_21() {
         // 21 年 → High
         let xdxr = vec![make_xdxr(2005, 7, 1, 1)];
-        assert_eq!(FqService::auto_detect_tier(&xdxr, 2026), FqContextTier::High);
+        assert_eq!(
+            FqService::auto_detect_tier(&xdxr, 2026),
+            FqContextTier::High
+        );
     }
 
     #[test]
     fn test_auto_detect_tier_uses_first_record() {
         // 多条记录，使用第一条 (最早)
         let xdxr = vec![
-            make_xdxr(2003, 11, 18, 5),  // 最早 (category=5)
-            make_xdxr(2004, 6, 1, 1),    // 分红
-            make_xdxr(2025, 7, 1, 1),    // 最近
+            make_xdxr(2003, 11, 18, 5), // 最早 (category=5)
+            make_xdxr(2004, 6, 1, 1),   // 分红
+            make_xdxr(2025, 7, 1, 1),   // 最近
         ];
-        assert_eq!(FqService::auto_detect_tier(&xdxr, 2026), FqContextTier::High);
+        assert_eq!(
+            FqService::auto_detect_tier(&xdxr, 2026),
+            FqContextTier::High
+        );
     }
 
     #[test]

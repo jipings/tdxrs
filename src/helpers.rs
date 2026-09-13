@@ -71,9 +71,8 @@ pub fn get_volume(vol: i64) -> f64 {
     let dbl_xmm4 = if hleax > 0x80 {
         let dwtmpeax = dw_edx + 1;
         let tmpdbl_xmm3 = 2.0_f64.powi(dwtmpeax as i32);
-        
-        2.0_f64.powi(dw_edx as i32) * 128.0
-            + (hleax & 0x7F) as f64 * tmpdbl_xmm3
+
+        2.0_f64.powi(dw_edx as i32) * 128.0 + (hleax & 0x7F) as f64 * tmpdbl_xmm3
     } else {
         if dw_edx >= 0 {
             2.0_f64.powi(dw_edx as i32) * hleax as f64
@@ -96,7 +95,6 @@ pub fn get_volume(vol: i64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-
 
     // CODE_REVIEW P1-6: 10+ 个续字节的恶意流不 panic、不错位
     #[test]

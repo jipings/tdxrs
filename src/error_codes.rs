@@ -114,9 +114,13 @@ impl ErrorCode {
     /// 从错误码数值创建
     pub fn from_code(code: u32) -> Option<Self> {
         match code {
-            1001..=1004 | 1101..=1104 | 1201..=1207 |
-            2001..=2006 | 2101..=2103 |
-            3001..=3005 | 4001..=4004 => Some(Self(code)),
+            1001..=1004
+            | 1101..=1104
+            | 1201..=1207
+            | 2001..=2006
+            | 2101..=2103
+            | 3001..=3005
+            | 4001..=4004 => Some(Self(code)),
             _ => None,
         }
     }
@@ -255,12 +259,22 @@ impl CodedError {
     ///
     /// 格式: `[E1101] 板块代码(88xxxx)不允许在通用客户端中使用，请使用 TdxBlockClient: 具体信息`
     pub fn format(&self) -> String {
-        format!("[E{:04}] {}: {}", self.code.0, self.code.description(), self.message)
+        format!(
+            "[E{:04}] {}: {}",
+            self.code.0,
+            self.code.description(),
+            self.message
+        )
     }
 
     /// 格式化为中文错误信息
     pub fn format_zh(&self) -> String {
-        format!("[E{:04}] {}: {}", self.code.0, self.code.description_zh(), self.message)
+        format!(
+            "[E{:04}] {}: {}",
+            self.code.0,
+            self.code.description_zh(),
+            self.message
+        )
     }
 }
 
@@ -378,7 +392,7 @@ mod tests {
         assert_eq!(classify_code("510300"), CodeType::Fund);
         assert_eq!(classify_code("510010"), CodeType::Fund);
 
-        assert_eq!(classify_code("12345"), CodeType::Unknown);  // 5位
+        assert_eq!(classify_code("12345"), CodeType::Unknown); // 5位
         assert_eq!(classify_code("1234567"), CodeType::Unknown); // 7位
     }
 
@@ -430,17 +444,17 @@ mod tests {
     fn test_error_code_range_no_overlap() {
         // 确保错误码范围不重叠
         let codes = [
-            ErrorCode::EMPTY_ARGUMENT,           // 1001
+            ErrorCode::EMPTY_ARGUMENT,               // 1001
             ErrorCode::BLOCK_CODE_IN_GENERAL_CLIENT, // 1101
-            ErrorCode::RATE_LIMIT_EXCEEDED,      // 1201
-            ErrorCode::CONNECTION_FAILED,        // 2001
-            ErrorCode::RESPONSE_HEADER_INVALID,  // 2101
-            ErrorCode::INVALID_DATE,             // 3001
-            ErrorCode::FILE_NOT_FOUND,           // 4001
+            ErrorCode::RATE_LIMIT_EXCEEDED,          // 1201
+            ErrorCode::CONNECTION_FAILED,            // 2001
+            ErrorCode::RESPONSE_HEADER_INVALID,      // 2101
+            ErrorCode::INVALID_DATE,                 // 3001
+            ErrorCode::FILE_NOT_FOUND,               // 4001
         ];
         // 所有错误码应该不同
         for i in 0..codes.len() {
-            for j in i+1..codes.len() {
+            for j in i + 1..codes.len() {
                 assert_ne!(codes[i], codes[j], "duplicate error code: {}", codes[i].0);
             }
         }

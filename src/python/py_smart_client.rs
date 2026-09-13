@@ -57,7 +57,11 @@ impl PyTdxSmartClient {
         count: u16,
         fq: u8,
     ) -> PyResult<Py<PyAny>> {
-        let bars = py.detach(|| self.client.get_security_bars(category, market, code, start, count, fq))
+        let bars = py
+            .detach(|| {
+                self.client
+                    .get_security_bars(category, market, code, start, count, fq)
+            })
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         let result = PyList::empty(py);
@@ -82,17 +86,11 @@ impl PyTdxSmartClient {
     }
 
     /// 获取实时行情 (带自动重试)
-    fn get_security_quotes(
-        &self,
-        py: Python,
-        all_stock: Vec<(u8, String)>,
-    ) -> PyResult<Py<PyAny>> {
-        let refs: Vec<(u8, &str)> = all_stock
-            .iter()
-            .map(|(m, c)| (*m, c.as_str()))
-            .collect();
+    fn get_security_quotes(&self, py: Python, all_stock: Vec<(u8, String)>) -> PyResult<Py<PyAny>> {
+        let refs: Vec<(u8, &str)> = all_stock.iter().map(|(m, c)| (*m, c.as_str())).collect();
 
-        let quotes = py.detach(|| self.client.get_security_quotes(&refs))
+        let quotes = py
+            .detach(|| self.client.get_security_quotes(&refs))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         let result = PyList::empty(py);
@@ -154,7 +152,11 @@ impl PyTdxSmartClient {
     /// 探测所有服务器并更新缓存
     ///
     /// 类似 mootdx 的 bestip 功能。
-    fn probe_and_cache(&self, py: Python<'_>, timeout_secs: f64) -> Vec<(String, u16, String, u32)> {
+    fn probe_and_cache(
+        &self,
+        py: Python<'_>,
+        timeout_secs: f64,
+    ) -> Vec<(String, u16, String, u32)> {
         // 全量探测最坏上百台服务器 × 三段探测，持 GIL 会冻结其他
         // Python 线程数分钟 (CODE_REVIEW P0-8 复审 — 原报告点名最重案例)
         py.detach(|| self.client.probe_and_cache(timeout_secs))

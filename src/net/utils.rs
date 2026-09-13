@@ -25,8 +25,7 @@ use crate::protocol::types::{SecurityBar, XdXrInfo};
 /// | Low  | 2400 | ~10 年 |
 /// | Mid  | 4800 | ~20 年 (默认) |
 /// | High | 7200 | ~30 年 |
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FqContextTier {
     /// 约 10 年 (3 页 × 800 根)
     Low = 2400,
@@ -43,7 +42,6 @@ impl FqContextTier {
         *self as u32 / MAX_KLINE_COUNT as u32
     }
 }
-
 
 // ================================================================
 // 交易阶段检测
@@ -62,9 +60,9 @@ pub enum TradingPhase {
 
 /// 限流分档乘数: (日K乘数, 分时乘数)
 const PHASE_MULTIPLIER: [(f64, f64); 3] = [
-    (1.0, 1.0),   // Trading: 保持基础限流
-    (2.0, 1.5),   // PrePost: 放宽
-    (4.0, 3.0),   // Closed:  大幅放宽
+    (1.0, 1.0), // Trading: 保持基础限流
+    (2.0, 1.5), // PrePost: 放宽
+    (4.0, 3.0), // Closed:  大幅放宽
 ];
 
 /// 检测当前交易阶段
@@ -268,8 +266,12 @@ pub fn code_bytes(code: &str) -> [u8; 6] {
 pub fn code_bytes_strict(code: &str) -> Result<[u8; 6]> {
     let bytes = code.as_bytes();
     if bytes.len() != 6 || !bytes.iter().all(|&b| b.is_ascii_alphanumeric()) {
-        return Err(crate::error_codes::ErrorCode::INVALID_STOCK_CODE
-            .err(format!("invalid stock code {:?}: expect 6 ASCII alphanumerics", code)));
+        return Err(
+            crate::error_codes::ErrorCode::INVALID_STOCK_CODE.err(format!(
+                "invalid stock code {:?}: expect 6 ASCII alphanumerics",
+                code
+            )),
+        );
     }
     let mut buf = [0u8; 6];
     buf.copy_from_slice(bytes);
@@ -290,16 +292,14 @@ pub fn code_bytes_strict(code: &str) -> Result<[u8; 6]> {
 /// 代码长度不为 6 位或首字符无法识别时返回错误。
 pub fn auto_market(code: &str) -> Result<u8> {
     if code.len() != 6 {
-        return Err(crate::error_codes::ErrorCode::INVALID_STOCK_CODE.err(
-            format!("{} (必须为 6 位数字)", code)
-        ));
+        return Err(crate::error_codes::ErrorCode::INVALID_STOCK_CODE
+            .err(format!("{} (必须为 6 位数字)", code)));
     }
     match code.chars().next() {
         Some('6') => Ok(MARKET_SH),
         Some('0') | Some('3') => Ok(MARKET_SZ),
-        _ => Err(crate::error_codes::ErrorCode::UNKNOWN_CODE_FORMAT.err(
-            format!("无法自动识别市场代码: {}", code)
-        )),
+        _ => Err(crate::error_codes::ErrorCode::UNKNOWN_CODE_FORMAT
+            .err(format!("无法自动识别市场代码: {}", code))),
     }
 }
 
@@ -334,8 +334,12 @@ pub fn encode_gbk_padded(s: &str, target_len: usize) -> Result<Vec<u8>> {
 /// 不是复权类型。实测服务器对该位为 0 的请求确定性返回空 K 线（见 issue #12）。
 /// 复权由客户端侧 adjuster 完成，`fq` 参数不进入线格式。
 pub fn build_security_bars_packet(
-    category: u8, market: u8, code: &str,
-    start: u32, count: u16, _fq: u8,
+    category: u8,
+    market: u8,
+    code: &str,
+    start: u32,
+    count: u16,
+    _fq: u8,
 ) -> Vec<u8> {
     let code_buf = code_bytes(code);
     let mut pkt = Vec::with_capacity(38);
@@ -358,8 +362,12 @@ pub fn build_security_bars_packet(
 
 /// 构建 index bars 请求包 (与 security bars 格式相同, 语义区分)
 pub fn build_index_bars_packet(
-    category: u8, market: u8, code: &str,
-    start: u32, count: u16, fq: u8,
+    category: u8,
+    market: u8,
+    code: &str,
+    start: u32,
+    count: u16,
+    fq: u8,
 ) -> Vec<u8> {
     build_security_bars_packet(category, market, code, start, count, fq)
 }
@@ -410,7 +418,9 @@ pub fn decompress_zlib_checked(data: &[u8], unzip_size: u32) -> Result<Vec<u8>> 
     // 有声明长度时适度余量校验；无声明（=0，如证券列表接口）退化为
     // 绝对上限 —— 此前 0+1024 的 margin 误伤 1025B 的合法响应
     let limit = if unzip_size > 0 {
-        (unzip_size as usize).saturating_add(4096).min(DECOMPRESS_ABS_LIMIT)
+        (unzip_size as usize)
+            .saturating_add(4096)
+            .min(DECOMPRESS_ABS_LIMIT)
     } else {
         DECOMPRESS_ABS_LIMIT
     };
@@ -421,11 +431,13 @@ pub fn decompress_zlib_checked(data: &[u8], unzip_size: u32) -> Result<Vec<u8>> 
         .read_to_end(&mut out)
         .map_err(|e| crate::error_codes::ErrorCode::DECOMPRESS_FAILED.err(format!("{}", e)))?;
     if out.len() > limit {
-        return Err(crate::error_codes::ErrorCode::DECOMPRESS_FAILED.err(format!(
-            "decompressed {} bytes exceeds limit {} (zip bomb?)",
-            out.len(),
-            limit
-        )));
+        return Err(
+            crate::error_codes::ErrorCode::DECOMPRESS_FAILED.err(format!(
+                "decompressed {} bytes exceeds limit {} (zip bomb?)",
+                out.len(),
+                limit
+            )),
+        );
     }
     if unzip_size > 0 && out.len() != unzip_size as usize {
         crate::logw!(
@@ -454,7 +466,15 @@ pub fn fetch_context_bars_for_adjust<F: Fn(&[u8]) -> Result<Vec<u8>>>(
     bars: &[SecurityBar],
     xdxr: &[XdXrInfo],
 ) -> Vec<SecurityBar> {
-    fetch_context_bars_for_adjust_with_tier(send_fn, category, market, code, bars, xdxr, FqContextTier::default())
+    fetch_context_bars_for_adjust_with_tier(
+        send_fn,
+        category,
+        market,
+        code,
+        bars,
+        xdxr,
+        FqContextTier::default(),
+    )
 }
 
 /// 为复权计算获取额外的历史 K 线上下文 (可指定档位)
@@ -479,10 +499,11 @@ pub fn fetch_context_bars_for_adjust_with_tier<F: Fn(&[u8]) -> Result<Vec<u8>>>(
         .map(|x| x.year * 10000 + x.month * 100 + x.day)
         .min();
 
-    let Some(ee_date) = earliest_event else { return Vec::new() };
+    let Some(ee_date) = earliest_event else {
+        return Vec::new();
+    };
 
-    let first_bar_date =
-        bars[0].year * 10000 + bars[0].month * 100 + bars[0].day;
+    let first_bar_date = bars[0].year * 10000 + bars[0].month * 100 + bars[0].day;
 
     if first_bar_date <= ee_date {
         return Vec::new();
@@ -580,9 +601,8 @@ mod tests {
         assert_eq!(u16::from_le_bytes([pkt[22], pkt[23]]), 1);
         // 与 pytdx 1.72 的请求逐字节一致（38B）
         let pytdx_expected: [u8; 38] = [
-            0x0c, 0x01, 0x08, 0x64, 0x01, 0x01, 0x1c, 0x00, 0x1c, 0x00, 0x2d, 0x05,
-            0x00, 0x00, b'0', b'0', b'0', b'0', b'0', b'1',
-            0x09, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00,
+            0x0c, 0x01, 0x08, 0x64, 0x01, 0x01, 0x1c, 0x00, 0x1c, 0x00, 0x2d, 0x05, 0x00, 0x00,
+            b'0', b'0', b'0', b'0', b'0', b'1', 0x09, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         ];
         assert_eq!(pkt.as_slice(), &pytdx_expected[..]);
@@ -614,10 +634,7 @@ mod tests {
     fn test_fetch_context_empty_bars() {
         let bars: Vec<SecurityBar> = vec![];
         let xdxr: Vec<XdXrInfo> = vec![];
-        let ctx = fetch_context_bars_for_adjust(
-            |_| Ok(Vec::new()),
-            4, 0, "000001", &bars, &xdxr,
-        );
+        let ctx = fetch_context_bars_for_adjust(|_| Ok(Vec::new()), 4, 0, "000001", &bars, &xdxr);
         assert!(ctx.is_empty());
     }
 
@@ -722,7 +739,10 @@ mod tests {
     #[test]
     fn test_detect_trading_phase_returns_valid() {
         let phase = detect_trading_phase();
-        assert!(matches!(phase, TradingPhase::Trading | TradingPhase::PrePost | TradingPhase::Closed));
+        assert!(matches!(
+            phase,
+            TradingPhase::Trading | TradingPhase::PrePost | TradingPhase::Closed
+        ));
     }
 
     // CODE_REVIEW P1-5: 高膨胀比流被上限拦截

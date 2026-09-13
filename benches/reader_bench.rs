@@ -4,7 +4,9 @@ fn bench_daily_bar_parse(c: &mut Criterion) {
     // 构造测试数据: 1000条日线记录
     let mut data = Vec::with_capacity(1000 * 32);
     for _ in 0..1000 {
-        let date: u32 = 36979; // 2024-01-15
+        // TDX 日期编码 2024-01-15: (2024-2004)*2048 + 100 + 15 = 41075
+        // (36979 实为 2022-01-15，此前注释失实 (CODE_REVIEW E))
+        let date: u32 = 41075; // 2024-01-15
         let open: u32 = 1050;
         let high: u32 = 1080;
         let low: u32 = 1030;

@@ -54,23 +54,53 @@ pub fn register_constants(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // 错误码 — 通用
     m.setattr("ERR_EMPTY_ARGUMENT", ErrorCode::EMPTY_ARGUMENT.0)?;
     m.setattr("ERR_ARGUMENT_TOO_LONG", ErrorCode::ARGUMENT_TOO_LONG.0)?;
-    m.setattr("ERR_ARGUMENT_OUT_OF_RANGE", ErrorCode::ARGUMENT_OUT_OF_RANGE.0)?;
+    m.setattr(
+        "ERR_ARGUMENT_OUT_OF_RANGE",
+        ErrorCode::ARGUMENT_OUT_OF_RANGE.0,
+    )?;
     m.setattr("ERR_INVALID_FORMAT", ErrorCode::INVALID_FORMAT.0)?;
 
     // 错误码 — 代码分类
-    m.setattr("ERR_BLOCK_CODE_IN_GENERAL_CLIENT", ErrorCode::BLOCK_CODE_IN_GENERAL_CLIENT.0)?;
-    m.setattr("ERR_BOND_CODE_NOT_SUPPORTED", ErrorCode::BOND_CODE_NOT_SUPPORTED.0)?;
-    m.setattr("ERR_FUND_CODE_NOT_SUPPORTED", ErrorCode::FUND_CODE_NOT_SUPPORTED.0)?;
+    m.setattr(
+        "ERR_BLOCK_CODE_IN_GENERAL_CLIENT",
+        ErrorCode::BLOCK_CODE_IN_GENERAL_CLIENT.0,
+    )?;
+    m.setattr(
+        "ERR_BOND_CODE_NOT_SUPPORTED",
+        ErrorCode::BOND_CODE_NOT_SUPPORTED.0,
+    )?;
+    m.setattr(
+        "ERR_FUND_CODE_NOT_SUPPORTED",
+        ErrorCode::FUND_CODE_NOT_SUPPORTED.0,
+    )?;
     m.setattr("ERR_UNKNOWN_CODE_FORMAT", ErrorCode::UNKNOWN_CODE_FORMAT.0)?;
 
     // 错误码 — 限流
     m.setattr("ERR_RATE_LIMIT_EXCEEDED", ErrorCode::RATE_LIMIT_EXCEEDED.0)?;
-    m.setattr("ERR_RATE_LIMIT_DAILY_EXCEEDED", ErrorCode::RATE_LIMIT_DAILY_EXCEEDED.0)?;
-    m.setattr("ERR_RATE_LIMIT_MINUTE_EXCEEDED", ErrorCode::RATE_LIMIT_MINUTE_EXCEEDED.0)?;
-    m.setattr("ERR_BLOCK_KLINE_CATEGORY_NOT_ALLOWED", ErrorCode::BLOCK_KLINE_CATEGORY_NOT_ALLOWED.0)?;
-    m.setattr("ERR_BLOCK_KLINE_COUNT_EXCEEDED", ErrorCode::BLOCK_KLINE_COUNT_EXCEEDED.0)?;
-    m.setattr("ERR_BLOCK_MINUTE_DISABLED", ErrorCode::BLOCK_MINUTE_DISABLED.0)?;
-    m.setattr("ERR_BLOCK_TRADES_DISABLED", ErrorCode::BLOCK_TRADES_DISABLED.0)?;
+    m.setattr(
+        "ERR_RATE_LIMIT_DAILY_EXCEEDED",
+        ErrorCode::RATE_LIMIT_DAILY_EXCEEDED.0,
+    )?;
+    m.setattr(
+        "ERR_RATE_LIMIT_MINUTE_EXCEEDED",
+        ErrorCode::RATE_LIMIT_MINUTE_EXCEEDED.0,
+    )?;
+    m.setattr(
+        "ERR_BLOCK_KLINE_CATEGORY_NOT_ALLOWED",
+        ErrorCode::BLOCK_KLINE_CATEGORY_NOT_ALLOWED.0,
+    )?;
+    m.setattr(
+        "ERR_BLOCK_KLINE_COUNT_EXCEEDED",
+        ErrorCode::BLOCK_KLINE_COUNT_EXCEEDED.0,
+    )?;
+    m.setattr(
+        "ERR_BLOCK_MINUTE_DISABLED",
+        ErrorCode::BLOCK_MINUTE_DISABLED.0,
+    )?;
+    m.setattr(
+        "ERR_BLOCK_TRADES_DISABLED",
+        ErrorCode::BLOCK_TRADES_DISABLED.0,
+    )?;
 
     // 错误码 — 连接
     m.setattr("ERR_CONNECTION_FAILED", ErrorCode::CONNECTION_FAILED.0)?;

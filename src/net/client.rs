@@ -3,7 +3,6 @@ use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-
 use crate::error::{Result, TdxError};
 use crate::error_codes::ErrorCode;
 use crate::net::connection::TcpConnection;
@@ -13,7 +12,7 @@ use crate::net::utils::{self, RateLimiter};
 use crate::protocol::constants::*;
 use crate::protocol::parsers::*;
 use crate::protocol::types::*;
-use crate::{logd, logi, logw, loge};
+use crate::{logd, loge, logi, logw};
 
 /// 缓存条目
 struct CacheEntry<T> {
@@ -61,10 +60,7 @@ impl TdxHqClient {
         config.handshake_fn = Some(Box::new(|conn: &mut TcpConnection| -> Result<()> {
             utils::perform_handshake(conn)
         }));
-        let default_server = (
-            PRIMARY_SERVERS[0].1.to_string(),
-            PRIMARY_SERVERS[0].2,
-        );
+        let default_server = (PRIMARY_SERVERS[0].1.to_string(), PRIMARY_SERVERS[0].2);
         Self {
             pool: Mutex::new(Arc::new(ConnectionPool::new_single(default_server, config))),
             connected: Arc::new(AtomicBool::new(false)),
@@ -78,7 +74,7 @@ impl TdxHqClient {
             connect_timeout: Mutex::new(CONNECT_TIMEOUT),
             server_list: Mutex::new(Vec::new()),
             blocked_servers: Mutex::new(Vec::new()),
-            rate_limiter: RateLimiter::new(20),      // 默认 50 req/s
+            rate_limiter: RateLimiter::new(20), // 默认 50 req/s
             rate_limiter_daily: RateLimiter::new(67), // 日K 15 req/s
             rate_limiter_minute: RateLimiter::new(100), // 分时 10 req/s (不允许解禁)
             fq_context_tier: AtomicU8::new(utils::FqContextTier::default() as u8),
@@ -120,10 +116,16 @@ impl TdxHqClient {
         // 注意: 必须先 clone 取走值并释放锁守卫再连接 —— connect_internal 内部
         // 会再次写 last_server，非重入 Mutex 持锁调用将永久自死锁（CODE_REVIEW P0-1）
         {
-            let last = self.last_server.lock().unwrap_or_else(|e| e.into_inner()).clone();
+            let last = self
+                .last_server
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone();
             if let Some((ref ip, port)) = last {
                 if !self.is_server_blocked(ip, port) {
-                    if let Ok(true) = self.connect_internal(ip, port, timeout, true) { return Ok(true) }
+                    if let Ok(true) = self.connect_internal(ip, port, timeout, true) {
+                        return Ok(true);
+                    }
                 }
             }
         }
@@ -164,10 +166,11 @@ impl TdxHqClient {
             }
         }
 
-        loge!("hq", "all servers unreachable (tried user/primary/all_known lists)");
-        Err(crate::error_codes::ErrorCode::CONNECTION_FAILED.err(
-            "all servers unreachable"
-        ))
+        loge!(
+            "hq",
+            "all servers unreachable (tried user/primary/all_known lists)"
+        );
+        Err(crate::error_codes::ErrorCode::CONNECTION_FAILED.err("all servers unreachable"))
     }
 
     // ================================================================
@@ -217,7 +220,10 @@ impl TdxHqClient {
     /// client.connect_to_any(None)?;  // 自动跳过黑名单服务器
     /// ```
     pub fn block_server(&self, ip: &str, port: u16) {
-        let mut blocked = self.blocked_servers.lock().unwrap_or_else(|e| e.into_inner());
+        let mut blocked = self
+            .blocked_servers
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         if !blocked.iter().any(|(i, p)| i == ip && *p == port) {
             blocked.push((ip.to_string(), port));
             logi!("hq", "server {}:{} added to blacklist", ip, port);
@@ -226,25 +232,37 @@ impl TdxHqClient {
 
     /// 从黑名单移除服务器
     pub fn unblock_server(&self, ip: &str, port: u16) {
-        let mut blocked = self.blocked_servers.lock().unwrap_or_else(|e| e.into_inner());
+        let mut blocked = self
+            .blocked_servers
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         blocked.retain(|(i, p)| i != ip || *p != port);
         logi!("hq", "server {}:{} removed from blacklist", ip, port);
     }
 
     /// 获取黑名单列表
     pub fn blocked_servers(&self) -> Vec<(String, u16)> {
-        self.blocked_servers.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        self.blocked_servers
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     /// 清空黑名单
     pub fn clear_blocked_servers(&self) {
-        self.blocked_servers.lock().unwrap_or_else(|e| e.into_inner()).clear();
+        self.blocked_servers
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
         logi!("hq", "server blacklist cleared");
     }
 
     /// 检查服务器是否在黑名单中
     fn is_server_blocked(&self, ip: &str, port: u16) -> bool {
-        let blocked = self.blocked_servers.lock().unwrap_or_else(|e| e.into_inner());
+        let blocked = self
+            .blocked_servers
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         blocked.iter().any(|(i, p)| i == ip && *p == port)
     }
 
@@ -336,7 +354,12 @@ impl TdxHqClient {
         timeout: Option<f64>,
         start_heartbeat: bool,
     ) -> Result<bool> {
-        let timeout_secs = timeout.unwrap_or(*self.connect_timeout.lock().unwrap_or_else(|e| e.into_inner()));
+        let timeout_secs = timeout.unwrap_or(
+            *self
+                .connect_timeout
+                .lock()
+                .unwrap_or_else(|e| e.into_inner()),
+        );
 
         // 建立连接并执行握手
         let mut tcp = TcpConnection::connect(ip, port, timeout_secs)?;
@@ -346,16 +369,22 @@ impl TdxHqClient {
         let server = (ip.to_string(), port);
         {
             let pool_guard = self.pool.lock().unwrap_or_else(|e| e.into_inner());
-            pool_guard.close_all();  // 关闭旧连接
-            pool_guard.push(tcp, server.clone());  // 放入新连接
+            pool_guard.close_all(); // 关闭旧连接
+            pool_guard.push(tcp, server.clone()); // 放入新连接
         }
 
         self.connected.store(true, Ordering::SeqCst);
         *self.last_server.lock().unwrap_or_else(|e| e.into_inner()) = Some(server);
 
         // 清除缓存
-        self.count_cache.lock().unwrap_or_else(|e| e.into_inner()).clear();
-        self.list_cache.lock().unwrap_or_else(|e| e.into_inner()).clear();
+        self.count_cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
+        self.list_cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
 
         if start_heartbeat {
             self.start_heartbeat();
@@ -367,7 +396,10 @@ impl TdxHqClient {
     /// 断开连接
     pub fn disconnect(&self) {
         self.stop_heartbeat();
-        self.pool.lock().unwrap_or_else(|e| e.into_inner()).close_all();
+        self.pool
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .close_all();
         self.connected.store(false, Ordering::SeqCst);
         logi!("hq", "disconnected");
     }
@@ -389,7 +421,10 @@ impl TdxHqClient {
 
     /// 设置连接超时 (秒)
     pub fn set_connect_timeout(&self, timeout: f64) {
-        *self.connect_timeout.lock().unwrap_or_else(|e| e.into_inner()) = timeout;
+        *self
+            .connect_timeout
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = timeout;
         // 同步传播到池配置：池内新建连接此前固定用 PoolConfig 的初始值
         // (CODE_REVIEW P2-1)
         let pool = Arc::clone(&self.pool.lock().unwrap_or_else(|e| e.into_inner()));
@@ -432,7 +467,10 @@ impl TdxHqClient {
         let stop_clone = stop.clone();
         let last_server = Arc::clone(&self.last_server);
         let interval = Duration::from_secs_f64(DEFAULT_HEARTBEAT_INTERVAL);
-        let connect_timeout = *self.connect_timeout.lock().unwrap_or_else(|e| e.into_inner());
+        let connect_timeout = *self
+            .connect_timeout
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
 
         let handle = std::thread::spawn(move || {
             while !stop_clone.load(Ordering::Relaxed) {
@@ -449,15 +487,17 @@ impl TdxHqClient {
                 }
 
                 // 尝试从池中借出连接做心跳
-                let current_server = last_server.lock().unwrap_or_else(|e| e.into_inner()).clone()
+                let current_server = last_server
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .clone()
                     .unwrap_or_else(|| (PRIMARY_SERVERS[0].1.to_string(), PRIMARY_SERVERS[0].2));
                 if let Ok(Some(mut guard)) = pool.try_borrow(&current_server) {
                     let alive = (|| -> bool {
                         let conn = guard.conn();
                         let mut packet = Vec::with_capacity(18);
                         packet.extend_from_slice(&[
-                            0x0c, 0x0c, 0x18, 0x6c, 0x00, 0x01, 0x08, 0x00, 0x08, 0x00, 0x4e,
-                            0x04,
+                            0x0c, 0x0c, 0x18, 0x6c, 0x00, 0x01, 0x08, 0x00, 0x08, 0x00, 0x4e, 0x04,
                         ]);
                         packet.extend_from_slice(&0u16.to_le_bytes());
                         packet.extend_from_slice(&[0x75, 0xc7, 0x33, 0x01]);
@@ -488,7 +528,10 @@ impl TdxHqClient {
                         // 心跳失败: 标记断线 + 关闭池中空闲连接
                         connected.store(false, Ordering::SeqCst);
                         pool.close_all();
-                        logw!("hq", "heartbeat failed, pool cleared, attempting reconnect...");
+                        logw!(
+                            "hq",
+                            "heartbeat failed, pool cleared, attempting reconnect..."
+                        );
 
                         // 尝试重连到替代服务器 (跳过当前失败的服务器)
                         let mut reconnected = false;
@@ -504,7 +547,8 @@ impl TdxHqClient {
                                     if utils::perform_handshake(&mut tcp).is_ok() {
                                         let new_server = (ip.to_string(), port);
                                         pool.push(tcp, new_server.clone());
-                                        *last_server.lock().unwrap_or_else(|e| e.into_inner()) = Some(new_server);
+                                        *last_server.lock().unwrap_or_else(|e| e.into_inner()) =
+                                            Some(new_server);
                                         connected.store(true, Ordering::SeqCst);
                                         logi!("hq", "heartbeat reconnect to {} ({})", name, ip);
                                         reconnected = true;
@@ -515,23 +559,42 @@ impl TdxHqClient {
                             }
                         }
                         if !reconnected {
-                            loge!("hq", "heartbeat reconnect failed, all PRIMARY servers unreachable");
+                            loge!(
+                                "hq",
+                                "heartbeat reconnect failed, all PRIMARY servers unreachable"
+                            );
                         }
                     }
                 }
             }
         });
 
-        *self.heartbeat_stop.lock().unwrap_or_else(|e| e.into_inner()) = Some(stop);
-        *self.heartbeat_handle.lock().unwrap_or_else(|e| e.into_inner()) = Some(handle);
+        *self
+            .heartbeat_stop
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = Some(stop);
+        *self
+            .heartbeat_handle
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = Some(handle);
         self.connected.store(true, Ordering::SeqCst);
     }
 
     fn stop_heartbeat(&self) {
-        if let Some(stop) = self.heartbeat_stop.lock().unwrap_or_else(|e| e.into_inner()).take() {
+        if let Some(stop) = self
+            .heartbeat_stop
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take()
+        {
             stop.store(true, Ordering::SeqCst);
         }
-        if let Some(h) = self.heartbeat_handle.lock().unwrap_or_else(|e| e.into_inner()).take() {
+        if let Some(h) = self
+            .heartbeat_handle
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take()
+        {
             let _ = h.join();
         }
     }
@@ -562,7 +625,13 @@ impl TdxHqClient {
 
         // 重试
         for (i, &interval) in RETRY_INTERVALS.iter().enumerate() {
-            logw!("hq", "request failed, retry {}/{} in {:.1}s", i + 1, RETRY_INTERVALS.len(), interval);
+            logw!(
+                "hq",
+                "request failed, retry {}/{} in {:.1}s",
+                i + 1,
+                RETRY_INTERVALS.len(),
+                interval
+            );
             std::thread::sleep(Duration::from_secs_f64(interval));
 
             // 尝试重连
@@ -575,15 +644,22 @@ impl TdxHqClient {
             }
         }
 
-        loge!("hq", "retry exhausted after {} attempts", RETRY_INTERVALS.len() + 1);
-        Err(crate::error_codes::ErrorCode::RETRY_EXHAUSTED.err(
-            format!("{} attempts", RETRY_INTERVALS.len() + 1)
-        ))
+        loge!(
+            "hq",
+            "retry exhausted after {} attempts",
+            RETRY_INTERVALS.len() + 1
+        );
+        Err(crate::error_codes::ErrorCode::RETRY_EXHAUSTED
+            .err(format!("{} attempts", RETRY_INTERVALS.len() + 1)))
     }
 
     /// 从连接池借出连接并执行请求
     fn try_send_and_recv(&self, packet: &[u8]) -> Result<Vec<u8>> {
-        let server = self.last_server.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        let server = self
+            .last_server
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
             .unwrap_or_else(|| (PRIMARY_SERVERS[0].1.to_string(), PRIMARY_SERVERS[0].2));
         let pool = self.pool.lock().unwrap_or_else(|e| e.into_inner());
         let mut guard = pool.borrow(&server)?;
@@ -654,11 +730,18 @@ impl TdxHqClient {
 
         logw!("hq", "connection lost, attempting reconnect...");
 
-        let last = self.last_server.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let last = self
+            .last_server
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
 
         // 1) 先试上次服务器 (可能临时故障已恢复)
         if let Some((ref ip, port)) = last {
-            if self.connect_internal(ip, port, Some(CONNECT_TIMEOUT), true).is_ok() {
+            if self
+                .connect_internal(ip, port, Some(CONNECT_TIMEOUT), true)
+                .is_ok()
+            {
                 return;
             }
         }
@@ -670,23 +753,38 @@ impl TdxHqClient {
         {
             let list = self.server_list.lock().unwrap_or_else(|e| e.into_inner());
             for (_, ip, port) in list.iter() {
-                if Some((ip.as_str(), *port)) == skip { continue; }
-                if self.connect_internal(ip, *port, Some(CONNECT_TIMEOUT), true).is_ok() {
+                if Some((ip.as_str(), *port)) == skip {
+                    continue;
+                }
+                if self
+                    .connect_internal(ip, *port, Some(CONNECT_TIMEOUT), true)
+                    .is_ok()
+                {
                     return;
                 }
             }
         }
         // PRIMARY (跳过失败的)
         for &(_, ip, port) in PRIMARY_SERVERS {
-            if Some((ip, port)) == skip { continue; }
-            if self.connect_internal(ip, port, Some(CONNECT_TIMEOUT), true).is_ok() {
+            if Some((ip, port)) == skip {
+                continue;
+            }
+            if self
+                .connect_internal(ip, port, Some(CONNECT_TIMEOUT), true)
+                .is_ok()
+            {
                 return;
             }
         }
         // ALL_KNOWN (跳过失败的)
         for &(_, ip, port) in ALL_KNOWN_SERVERS {
-            if Some((ip, port)) == skip { continue; }
-            if self.connect_internal(ip, port, Some(CONNECT_TIMEOUT), true).is_ok() {
+            if Some((ip, port)) == skip {
+                continue;
+            }
+            if self
+                .connect_internal(ip, port, Some(CONNECT_TIMEOUT), true)
+                .is_ok()
+            {
                 return;
             }
         }
@@ -728,7 +826,8 @@ impl TdxHqClient {
         let mut retry_count = 0;
 
         for attempt in 0..max_retry {
-            let packet = utils::build_security_bars_packet(category, market, code, start, count, fq);
+            let packet =
+                utils::build_security_bars_packet(category, market, code, start, count, fq);
             let body = self.send_and_recv_limited(&packet, &self.rate_limiter_daily)?;
             let parsed = parse_security_bars(&body, category)?;
 
@@ -739,8 +838,13 @@ impl TdxHqClient {
 
             // 空响应，尝试切换服务器 (debug 级别，减少噪音)
             retry_count += 1;
-            logd!("hq", "attempt {}/{}: empty K-line for {}, switching server",
-                  attempt + 1, max_retry, code);
+            logd!(
+                "hq",
+                "attempt {}/{}: empty K-line for {}, switching server",
+                attempt + 1,
+                max_retry,
+                code
+            );
 
             if attempt < max_retry - 1 {
                 self.reconnect_to_another_server();
@@ -749,10 +853,21 @@ impl TdxHqClient {
 
         // 仅在所有重试都失败时输出警告
         if bars.is_empty() && should_retry_empty && retry_count > 0 {
-            logw!("hq", "all {} attempts returned empty K-line for {}", max_retry, code);
+            logw!(
+                "hq",
+                "all {} attempts returned empty K-line for {}",
+                max_retry,
+                code
+            );
         } else if retry_count > 0 && !bars.is_empty() {
             // 重试成功，输出信息级别
-            logi!("hq", "got {} bars for {} after {} server switch(es)", bars.len(), code, retry_count);
+            logi!(
+                "hq",
+                "got {} bars for {} after {} server switch(es)",
+                bars.len(),
+                code,
+                retry_count
+            );
         }
 
         // 客户端侧复权计算 (v0.4.2)
@@ -763,7 +878,8 @@ impl TdxHqClient {
                     2 => FqType::Hfq,
                     _ => FqType::Qfq,
                 };
-                let context = self.fetch_context_bars_for_adjust(category, market, code, &bars, &xdxr);
+                let context =
+                    self.fetch_context_bars_for_adjust(category, market, code, &bars, &xdxr);
                 adjust_security_bars(&mut bars, &context, &xdxr, fq_enum);
             }
         }
@@ -775,7 +891,11 @@ impl TdxHqClient {
     ///
     /// 遍历 PRIMARY_SERVERS，跳过当前服务器和黑名单，连接到第一台可用的。
     fn reconnect_to_another_server(&self) {
-        let current = self.last_server.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let current = self
+            .last_server
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
 
         for &(_, ip, port) in PRIMARY_SERVERS {
             // 跳过当前服务器
@@ -790,7 +910,10 @@ impl TdxHqClient {
                 continue;
             }
 
-            if self.connect_internal(ip, port, Some(CONNECT_TIMEOUT), true).is_ok() {
+            if self
+                .connect_internal(ip, port, Some(CONNECT_TIMEOUT), true)
+                .is_ok()
+            {
                 logi!("hq", "switched to server {}:{}", ip, port);
                 return;
             }
@@ -814,7 +937,11 @@ impl TdxHqClient {
     ) -> Vec<SecurityBar> {
         utils::fetch_context_bars_for_adjust_with_tier(
             |pkt| self.send_and_recv(pkt),
-            category, market, code, bars, xdxr,
+            category,
+            market,
+            code,
+            bars,
+            xdxr,
             self.fq_context_tier(),
         )
     }
@@ -870,11 +997,12 @@ impl TdxHqClient {
             .map(|x| x.year * 10000 + x.month * 100 + x.day)
             .min();
 
-        let Some(ee_date) = earliest_event else { return Ok(Vec::new()) };
+        let Some(ee_date) = earliest_event else {
+            return Ok(Vec::new());
+        };
 
         // 检查是否需要上下文
-        let first_bar_date =
-            bars[0].year * 10000 + bars[0].month * 100 + bars[0].day;
+        let first_bar_date = bars[0].year * 10000 + bars[0].month * 100 + bars[0].day;
 
         if first_bar_date <= ee_date {
             return Ok(Vec::new());
@@ -888,7 +1016,12 @@ impl TdxHqClient {
 
         for _page in 0..max_pages {
             let pkt = utils::build_security_bars_packet(
-                category, market, code, offset, MAX_KLINE_COUNT, 0,
+                category,
+                market,
+                code,
+                offset,
+                MAX_KLINE_COUNT,
+                0,
             );
             let body = match self.send_and_recv(&pkt) {
                 Ok(b) => b,
@@ -991,8 +1124,13 @@ impl TdxHqClient {
             }
 
             retry_count += 1;
-            logd!("hq", "attempt {}/{}: empty index K-line for {}, switching server",
-                  attempt + 1, max_retry, code);
+            logd!(
+                "hq",
+                "attempt {}/{}: empty index K-line for {}, switching server",
+                attempt + 1,
+                max_retry,
+                code
+            );
 
             if attempt < max_retry - 1 {
                 self.reconnect_to_another_server();
@@ -1000,9 +1138,20 @@ impl TdxHqClient {
         }
 
         if bars.is_empty() && should_retry_empty && retry_count > 0 {
-            logw!("hq", "all {} attempts returned empty index K-line for {}", max_retry, code);
+            logw!(
+                "hq",
+                "all {} attempts returned empty index K-line for {}",
+                max_retry,
+                code
+            );
         } else if retry_count > 0 && !bars.is_empty() {
-            logi!("hq", "got {} index bars for {} after {} server switch(es)", bars.len(), code, retry_count);
+            logi!(
+                "hq",
+                "got {} index bars for {} after {} server switch(es)",
+                bars.len(),
+                code,
+                retry_count
+            );
         }
 
         Ok(bars)
@@ -1046,10 +1195,7 @@ impl TdxHqClient {
     /// 支持任意数量的标的：内部按单批上限 MAX_QUOTES_COUNT 自动分批
     /// 请求并合并结果，调用方无需自行分组。
     /// 服务器对无效/退市等代码可能返回错位记录，已按请求过滤。
-    pub fn get_security_quotes(
-        &self,
-        all_stock: &[(u8, &str)],
-    ) -> Result<Vec<SecurityQuote>> {
+    pub fn get_security_quotes(&self, all_stock: &[(u8, &str)]) -> Result<Vec<SecurityQuote>> {
         // 检查是否有板块代码 + 严格代码校验
         for &(_, code) in all_stock {
             self.check_not_block_code(code)?;
@@ -1066,10 +1212,7 @@ impl TdxHqClient {
     }
 
     /// 单批实时行情查询（不超过 MAX_QUOTES_COUNT 只）
-    fn get_security_quotes_batch(
-        &self,
-        all_stock: &[(u8, &str)],
-    ) -> Result<Vec<SecurityQuote>> {
+    fn get_security_quotes_batch(&self, all_stock: &[(u8, &str)]) -> Result<Vec<SecurityQuote>> {
         debug_assert!(all_stock.len() <= MAX_QUOTES_COUNT);
         let stock_len = all_stock.len() as u16;
         let pkgdatalen = (stock_len as u32) * 7 + 12;
@@ -1173,11 +1316,7 @@ impl TdxHqClient {
     ///
     /// 内部委托给历史分时 API (传入今日日期)，避免实时分时 API (0x051d)
     /// 的价格编码异常（基金类价格 1000x 偏高）。
-    pub fn get_minute_time_data(
-        &self,
-        market: u8,
-        code: &str,
-    ) -> Result<Vec<MinuteTimePrice>> {
+    pub fn get_minute_time_data(&self, market: u8, code: &str) -> Result<Vec<MinuteTimePrice>> {
         let today = utils::today_yyyymmdd();
         self.get_history_minute_time_data(market, code, today)
     }
@@ -1299,12 +1438,7 @@ impl TdxHqClient {
     }
 
     /// 获取板块数据
-    pub fn get_block_info(
-        &self,
-        block_file: &str,
-        start: u32,
-        size: u32,
-    ) -> Result<Vec<u8>> {
+    pub fn get_block_info(&self, block_file: &str, start: u32, size: u32) -> Result<Vec<u8>> {
         let mut name_buf = [0u8; 100];
         let bytes = block_file.as_bytes();
         let len = bytes.len().min(100);

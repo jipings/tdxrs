@@ -34,16 +34,18 @@ impl TcpConnection {
             .next()
             .ok_or_else(|| TdxError::Connection(format!("resolve {}: no address", addr)))?;
         let connect_to = std::time::Duration::from_secs_f64(timeout_secs.max(0.001));
-        let stream = TcpStream::connect_timeout(&sock_addr, connect_to).map_err(|e| {
-            TdxError::Connection(format!("Failed to connect to {}: {}", addr, e))
-        })?;
+        let stream = TcpStream::connect_timeout(&sock_addr, connect_to)
+            .map_err(|e| TdxError::Connection(format!("Failed to connect to {}: {}", addr, e)))?;
         stream
             .set_read_timeout(Some(std::time::Duration::from_secs_f64(timeout_secs)))
             .map_err(|e| TdxError::Connection(format!("set_read_timeout: {}", e)))?;
         stream
             .set_write_timeout(Some(std::time::Duration::from_secs_f64(timeout_secs)))
             .map_err(|e| TdxError::Connection(format!("set_write_timeout: {}", e)))?;
-        Ok(Self { stream, healthy: std::cell::Cell::new(true) })
+        Ok(Self {
+            stream,
+            healthy: std::cell::Cell::new(true),
+        })
     }
 
     pub fn send(&mut self, data: &[u8]) -> Result<()> {

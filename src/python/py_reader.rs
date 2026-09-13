@@ -20,7 +20,8 @@ impl DailyBarReader {
     fn new(coefficient: f64) -> PyResult<Self> {
         if !coefficient.is_finite() || coefficient <= 0.0 {
             return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                "invalid coefficient {}: must be finite and > 0", coefficient
+                "invalid coefficient {}: must be finite and > 0",
+                coefficient
             )));
         }
         Ok(Self { coefficient })
@@ -51,7 +52,8 @@ impl DailyBarReader {
 
     /// 从文件读取并解析
     fn parse_file(&self, py: Python<'_>, filename: &str) -> PyResult<Py<PyAny>> {
-        let records = py.detach(|| daily_bar::read_daily_bar_file(filename, self.coefficient))
+        let records = py
+            .detach(|| daily_bar::read_daily_bar_file(filename, self.coefficient))
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
 
         let list = PyList::empty(py);
@@ -80,10 +82,16 @@ impl DailyBarReader {
         let list = PyList::empty(py);
         for r in &records {
             let items: Vec<Py<PyAny>> = vec![
-                r.date.as_str().into_py_any(py)?, r.open.into_py_any(py)?,
-                r.high.into_py_any(py)?, r.low.into_py_any(py)?, r.close.into_py_any(py)?,
-                r.amount.into_py_any(py)?, r.volume.into_py_any(py)?,
-                r.year.into_py_any(py)?, r.month.into_py_any(py)?, r.day.into_py_any(py)?,
+                r.date.as_str().into_py_any(py)?,
+                r.open.into_py_any(py)?,
+                r.high.into_py_any(py)?,
+                r.low.into_py_any(py)?,
+                r.close.into_py_any(py)?,
+                r.amount.into_py_any(py)?,
+                r.volume.into_py_any(py)?,
+                r.year.into_py_any(py)?,
+                r.month.into_py_any(py)?,
+                r.day.into_py_any(py)?,
             ];
             let tuple = PyTuple::new(py, &items)?;
             list.append(tuple)?;
@@ -93,16 +101,23 @@ impl DailyBarReader {
 
     /// 从文件读取并解析，返回 Python list of tuple (高性能模式)
     fn parse_file_tuples(&self, py: Python<'_>, filename: &str) -> PyResult<Py<PyAny>> {
-        let records = py.detach(|| daily_bar::read_daily_bar_file(filename, self.coefficient))
+        let records = py
+            .detach(|| daily_bar::read_daily_bar_file(filename, self.coefficient))
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
 
         let list = PyList::empty(py);
         for r in &records {
             let items: Vec<Py<PyAny>> = vec![
-                r.date.as_str().into_py_any(py)?, r.open.into_py_any(py)?,
-                r.high.into_py_any(py)?, r.low.into_py_any(py)?, r.close.into_py_any(py)?,
-                r.amount.into_py_any(py)?, r.volume.into_py_any(py)?,
-                r.year.into_py_any(py)?, r.month.into_py_any(py)?, r.day.into_py_any(py)?,
+                r.date.as_str().into_py_any(py)?,
+                r.open.into_py_any(py)?,
+                r.high.into_py_any(py)?,
+                r.low.into_py_any(py)?,
+                r.close.into_py_any(py)?,
+                r.amount.into_py_any(py)?,
+                r.volume.into_py_any(py)?,
+                r.year.into_py_any(py)?,
+                r.month.into_py_any(py)?,
+                r.day.into_py_any(py)?,
             ];
             let tuple = PyTuple::new(py, &items)?;
             list.append(tuple)?;
@@ -119,7 +134,8 @@ impl DailyBarReader {
 
     /// 从文件读取并解析, 返回 pandas DataFrame
     fn to_dataframe_file(&self, py: Python<'_>, filename: &str) -> PyResult<Py<PyAny>> {
-        let records = py.detach(|| daily_bar::read_daily_bar_file(filename, self.coefficient))
+        let records = py
+            .detach(|| daily_bar::read_daily_bar_file(filename, self.coefficient))
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
         crate::python::py_dataframe::daily_records_to_df(py, &records)
     }
@@ -163,7 +179,8 @@ impl MinBarReader {
 
     /// 从文件读取并解析
     fn parse_file(&self, py: Python<'_>, filename: &str) -> PyResult<Py<PyAny>> {
-        let records = py.detach(|| min_bar::read_min_bar_file(filename))
+        let records = py
+            .detach(|| min_bar::read_min_bar_file(filename))
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
 
         let list = PyList::empty(py);
@@ -194,11 +211,18 @@ impl MinBarReader {
         let list = PyList::empty(py);
         for r in &records {
             let items: Vec<Py<PyAny>> = vec![
-                r.date.as_str().into_py_any(py)?, r.open.into_py_any(py)?,
-                r.high.into_py_any(py)?, r.low.into_py_any(py)?, r.close.into_py_any(py)?,
-                r.amount.into_py_any(py)?, r.volume.into_py_any(py)?,
-                r.year.into_py_any(py)?, r.month.into_py_any(py)?, r.day.into_py_any(py)?,
-                r.hour.into_py_any(py)?, r.minute.into_py_any(py)?,
+                r.date.as_str().into_py_any(py)?,
+                r.open.into_py_any(py)?,
+                r.high.into_py_any(py)?,
+                r.low.into_py_any(py)?,
+                r.close.into_py_any(py)?,
+                r.amount.into_py_any(py)?,
+                r.volume.into_py_any(py)?,
+                r.year.into_py_any(py)?,
+                r.month.into_py_any(py)?,
+                r.day.into_py_any(py)?,
+                r.hour.into_py_any(py)?,
+                r.minute.into_py_any(py)?,
             ];
             let tuple = PyTuple::new(py, &items)?;
             list.append(tuple)?;
@@ -208,17 +232,25 @@ impl MinBarReader {
 
     /// 从文件读取并解析，返回 list of tuple (高性能模式)
     fn parse_file_tuples(&self, py: Python<'_>, filename: &str) -> PyResult<Py<PyAny>> {
-        let records = py.detach(|| min_bar::read_min_bar_file(filename))
+        let records = py
+            .detach(|| min_bar::read_min_bar_file(filename))
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
 
         let list = PyList::empty(py);
         for r in &records {
             let items: Vec<Py<PyAny>> = vec![
-                r.date.as_str().into_py_any(py)?, r.open.into_py_any(py)?,
-                r.high.into_py_any(py)?, r.low.into_py_any(py)?, r.close.into_py_any(py)?,
-                r.amount.into_py_any(py)?, r.volume.into_py_any(py)?,
-                r.year.into_py_any(py)?, r.month.into_py_any(py)?, r.day.into_py_any(py)?,
-                r.hour.into_py_any(py)?, r.minute.into_py_any(py)?,
+                r.date.as_str().into_py_any(py)?,
+                r.open.into_py_any(py)?,
+                r.high.into_py_any(py)?,
+                r.low.into_py_any(py)?,
+                r.close.into_py_any(py)?,
+                r.amount.into_py_any(py)?,
+                r.volume.into_py_any(py)?,
+                r.year.into_py_any(py)?,
+                r.month.into_py_any(py)?,
+                r.day.into_py_any(py)?,
+                r.hour.into_py_any(py)?,
+                r.minute.into_py_any(py)?,
             ];
             let tuple = PyTuple::new(py, &items)?;
             list.append(tuple)?;
@@ -272,7 +304,8 @@ impl LcMinBarReader {
 
     /// 从文件读取并解析
     fn parse_file(&self, py: Python<'_>, filename: &str) -> PyResult<Py<PyAny>> {
-        let records = py.detach(|| min_bar::read_lc_min_bar_file(filename))
+        let records = py
+            .detach(|| min_bar::read_lc_min_bar_file(filename))
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
 
         let list = PyList::empty(py);
@@ -303,11 +336,18 @@ impl LcMinBarReader {
         let list = PyList::empty(py);
         for r in &records {
             let items: Vec<Py<PyAny>> = vec![
-                r.date.as_str().into_py_any(py)?, r.open.into_py_any(py)?,
-                r.high.into_py_any(py)?, r.low.into_py_any(py)?, r.close.into_py_any(py)?,
-                r.amount.into_py_any(py)?, r.volume.into_py_any(py)?,
-                r.year.into_py_any(py)?, r.month.into_py_any(py)?, r.day.into_py_any(py)?,
-                r.hour.into_py_any(py)?, r.minute.into_py_any(py)?,
+                r.date.as_str().into_py_any(py)?,
+                r.open.into_py_any(py)?,
+                r.high.into_py_any(py)?,
+                r.low.into_py_any(py)?,
+                r.close.into_py_any(py)?,
+                r.amount.into_py_any(py)?,
+                r.volume.into_py_any(py)?,
+                r.year.into_py_any(py)?,
+                r.month.into_py_any(py)?,
+                r.day.into_py_any(py)?,
+                r.hour.into_py_any(py)?,
+                r.minute.into_py_any(py)?,
             ];
             let tuple = PyTuple::new(py, &items)?;
             list.append(tuple)?;
@@ -317,17 +357,25 @@ impl LcMinBarReader {
 
     /// 从文件读取并解析，返回 list of tuple (高性能模式)
     fn parse_file_tuples(&self, py: Python<'_>, filename: &str) -> PyResult<Py<PyAny>> {
-        let records = py.detach(|| min_bar::read_lc_min_bar_file(filename))
+        let records = py
+            .detach(|| min_bar::read_lc_min_bar_file(filename))
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
 
         let list = PyList::empty(py);
         for r in &records {
             let items: Vec<Py<PyAny>> = vec![
-                r.date.as_str().into_py_any(py)?, r.open.into_py_any(py)?,
-                r.high.into_py_any(py)?, r.low.into_py_any(py)?, r.close.into_py_any(py)?,
-                r.amount.into_py_any(py)?, r.volume.into_py_any(py)?,
-                r.year.into_py_any(py)?, r.month.into_py_any(py)?, r.day.into_py_any(py)?,
-                r.hour.into_py_any(py)?, r.minute.into_py_any(py)?,
+                r.date.as_str().into_py_any(py)?,
+                r.open.into_py_any(py)?,
+                r.high.into_py_any(py)?,
+                r.low.into_py_any(py)?,
+                r.close.into_py_any(py)?,
+                r.amount.into_py_any(py)?,
+                r.volume.into_py_any(py)?,
+                r.year.into_py_any(py)?,
+                r.month.into_py_any(py)?,
+                r.day.into_py_any(py)?,
+                r.hour.into_py_any(py)?,
+                r.minute.into_py_any(py)?,
             ];
             let tuple = PyTuple::new(py, &items)?;
             list.append(tuple)?;
@@ -434,7 +482,8 @@ impl BlockReader {
 
     /// 从文件读取并解析
     fn parse_file(&self, py: Python<'_>, filename: &str) -> PyResult<Py<PyAny>> {
-        let records = py.detach(|| block::read_block_file(filename))
+        let records = py
+            .detach(|| block::read_block_file(filename))
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
 
         let list = PyList::empty(py);
@@ -483,7 +532,8 @@ impl FinancialReader {
 
     /// 从文件读取并解析
     fn parse_file(&self, py: Python<'_>, filename: &str) -> PyResult<Py<PyAny>> {
-        let records = py.detach(|| financial::read_financial_file(filename))
+        let records = py
+            .detach(|| financial::read_financial_file(filename))
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
 
         let list = PyList::empty(py);

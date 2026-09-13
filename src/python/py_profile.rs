@@ -4,7 +4,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 
 use crate::net::f10_client::TdxF10Client as RustTdxF10Client;
-use crate::profile::{F10Category, auto_market, parse_f10_text, extract_basic_info};
+use crate::profile::{auto_market, extract_basic_info, parse_f10_text, F10Category};
 
 /// F10 公司资料客户端 (Python 绑定)
 ///
@@ -71,9 +71,11 @@ impl PyTdxF10Client {
     /// - start: 起始位置
     /// - length: 数据长度
     fn get_category(&self, py: Python<'_>, market: u8, code: &str) -> PyResult<Py<PyList>> {
-        let categories = py.detach(|| self.client.get_category(market, code)).map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(format!("获取分类失败: {}", e))
-        })?;
+        let categories = py
+            .detach(|| self.client.get_category(market, code))
+            .map_err(|e| {
+                pyo3::exceptions::PyRuntimeError::new_err(format!("获取分类失败: {}", e))
+            })?;
 
         let list = PyList::empty(py);
         for cat in &categories {
@@ -96,9 +98,8 @@ impl PyTdxF10Client {
     /// # 返回
     /// 分类列表
     fn get_category_auto(&self, py: Python<'_>, code: &str) -> PyResult<Py<PyList>> {
-        let market = auto_market(code).map_err(|e| {
-            pyo3::exceptions::PyValueError::new_err(format!("无法识别市场: {}", e))
-        })?;
+        let market = auto_market(code)
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("无法识别市场: {}", e)))?;
         self.get_category(py, market, code)
     }
 
@@ -119,24 +120,30 @@ impl PyTdxF10Client {
         category: &Bound<'_, PyDict>,
     ) -> PyResult<String> {
         // 从字典构建 F10Category
-        let name: String = category.get_item("name")?.ok_or_else(|| {
-            pyo3::exceptions::PyValueError::new_err("缺少 'name' 字段")
-        })?.extract()?;
-        let filename: String = category.get_item("filename")?.ok_or_else(|| {
-            pyo3::exceptions::PyValueError::new_err("缺少 'filename' 字段")
-        })?.extract()?;
-        let start: u32 = category.get_item("start")?.ok_or_else(|| {
-            pyo3::exceptions::PyValueError::new_err("缺少 'start' 字段")
-        })?.extract()?;
-        let length: u32 = category.get_item("length")?.ok_or_else(|| {
-            pyo3::exceptions::PyValueError::new_err("缺少 'length' 字段")
-        })?.extract()?;
+        let name: String = category
+            .get_item("name")?
+            .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("缺少 'name' 字段"))?
+            .extract()?;
+        let filename: String = category
+            .get_item("filename")?
+            .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("缺少 'filename' 字段"))?
+            .extract()?;
+        let start: u32 = category
+            .get_item("start")?
+            .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("缺少 'start' 字段"))?
+            .extract()?;
+        let length: u32 = category
+            .get_item("length")?
+            .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("缺少 'length' 字段"))?
+            .extract()?;
 
         let cat = F10Category::new(name, filename, start, length);
 
-        let content = py.detach(|| self.client.get_content(market, code, &cat)).map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(format!("获取内容失败: {}", e))
-        })?;
+        let content = py
+            .detach(|| self.client.get_content(market, code, &cat))
+            .map_err(|e| {
+                pyo3::exceptions::PyRuntimeError::new_err(format!("获取内容失败: {}", e))
+            })?;
 
         Ok(content.content)
     }
@@ -150,10 +157,18 @@ impl PyTdxF10Client {
     ///
     /// # 返回
     /// 文本内容
-    fn get_content_by_name(&self, py: Python<'_>, market: u8, code: &str, name: &str) -> PyResult<String> {
-        let content = py.detach(|| self.client.get_content_by_name(market, code, name)).map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(format!("获取内容失败: {}", e))
-        })?;
+    fn get_content_by_name(
+        &self,
+        py: Python<'_>,
+        market: u8,
+        code: &str,
+        name: &str,
+    ) -> PyResult<String> {
+        let content = py
+            .detach(|| self.client.get_content_by_name(market, code, name))
+            .map_err(|e| {
+                pyo3::exceptions::PyRuntimeError::new_err(format!("获取内容失败: {}", e))
+            })?;
 
         Ok(content.content)
     }
@@ -167,9 +182,11 @@ impl PyTdxF10Client {
     /// # 返回
     /// 字典，键为分类名称，值为文本内容
     fn get_all_contents(&self, py: Python<'_>, market: u8, code: &str) -> PyResult<Py<PyDict>> {
-        let contents = py.detach(|| self.client.get_all_contents(market, code)).map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(format!("获取所有内容失败: {}", e))
-        })?;
+        let contents = py
+            .detach(|| self.client.get_all_contents(market, code))
+            .map_err(|e| {
+                pyo3::exceptions::PyRuntimeError::new_err(format!("获取所有内容失败: {}", e))
+            })?;
 
         let dict = PyDict::new(py);
         for content in &contents {
@@ -188,9 +205,11 @@ impl PyTdxF10Client {
     /// # 返回
     /// F10Data 包含所有分类的内容
     fn get_all_data(&self, py: Python<'_>, market: u8, code: &str) -> PyResult<Py<PyDict>> {
-        let data = py.detach(|| self.client.get_all_data(market, code)).map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(format!("获取所有数据失败: {}", e))
-        })?;
+        let data = py
+            .detach(|| self.client.get_all_data(market, code))
+            .map_err(|e| {
+                pyo3::exceptions::PyRuntimeError::new_err(format!("获取所有数据失败: {}", e))
+            })?;
 
         let dict = PyDict::new(py);
         dict.set_item("code", &data.code)?;
@@ -227,9 +246,8 @@ impl PyTdxF10Client {
     /// 市场代码 (0=SZ, 1=SH)
     #[staticmethod]
     fn auto_market_code(code: &str) -> PyResult<u8> {
-        auto_market(code).map_err(|e| {
-            pyo3::exceptions::PyValueError::new_err(format!("无法识别市场: {}", e))
-        })
+        auto_market(code)
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("无法识别市场: {}", e)))
     }
 
     /// 解析 F10 原始文本，返回结构化数据

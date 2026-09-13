@@ -6,13 +6,13 @@ use std::sync::atomic::{AtomicU8, Ordering};
 
 use crate::error::{Result, TdxError};
 use crate::error_codes::ErrorCode;
+use crate::loge;
 use crate::net::connection::TcpConnection;
 use crate::net::packet::{ResponseHeader, RSP_HEADER_LEN};
 use crate::net::utils;
 use crate::protocol::constants::*;
 use crate::protocol::parsers::*;
 use crate::protocol::types::*;
-use crate::loge;
 
 /// 裸连接客户端
 ///
@@ -51,11 +51,16 @@ impl TdxDirectClient {
     // ================================================================
 
     fn send_and_recv(&self, packet: &[u8]) -> Result<Vec<u8>> {
-        let mut conn = TcpConnection::connect(&self.ip, self.port, self.timeout)
-            .map_err(|e| {
-                loge!("direct", "connect to {}:{} failed: {}", self.ip, self.port, e);
+        let mut conn = TcpConnection::connect(&self.ip, self.port, self.timeout).map_err(|e| {
+            loge!(
+                "direct",
+                "connect to {}:{} failed: {}",
+                self.ip,
+                self.port,
                 e
-            })?;
+            );
+            e
+        })?;
         utils::perform_handshake(&mut conn)?;
 
         conn.send(packet)?;
@@ -103,7 +108,11 @@ impl TdxDirectClient {
     ) -> Vec<SecurityBar> {
         utils::fetch_context_bars_for_adjust_with_tier(
             |pkt| self.send_and_recv(pkt),
-            category, market, code, bars, xdxr,
+            category,
+            market,
+            code,
+            bars,
+            xdxr,
             self.fq_context_tier(),
         )
     }
@@ -147,10 +156,11 @@ impl TdxDirectClient {
             .map(|x| x.year * 10000 + x.month * 100 + x.day)
             .min();
 
-        let Some(ee_date) = earliest_event else { return Ok(Vec::new()) };
+        let Some(ee_date) = earliest_event else {
+            return Ok(Vec::new());
+        };
 
-        let first_bar_date =
-            bars[0].year * 10000 + bars[0].month * 100 + bars[0].day;
+        let first_bar_date = bars[0].year * 10000 + bars[0].month * 100 + bars[0].day;
 
         if first_bar_date <= ee_date {
             return Ok(Vec::new());
@@ -163,7 +173,12 @@ impl TdxDirectClient {
 
         for _page in 0..max_pages {
             let pkt = utils::build_security_bars_packet(
-                category, market, code, offset, MAX_KLINE_COUNT, 0,
+                category,
+                market,
+                code,
+                offset,
+                MAX_KLINE_COUNT,
+                0,
             );
             let body = match self.send_and_recv(&pkt) {
                 Ok(b) => b,
@@ -216,7 +231,8 @@ impl TdxDirectClient {
             if let Ok(xdxr) = self.get_xdxr_info(market, code) {
                 use crate::protocol::adjuster::{adjust_security_bars, FqType};
                 let fq_enum = if fq == 2 { FqType::Hfq } else { FqType::Qfq };
-                let context = self.fetch_context_bars_for_adjust(category, market, code, &bars, &xdxr);
+                let context =
+                    self.fetch_context_bars_for_adjust(category, market, code, &bars, &xdxr);
                 adjust_security_bars(&mut bars, &context, &xdxr, fq_enum);
             }
         }
@@ -262,10 +278,7 @@ impl TdxDirectClient {
     /// 获取实时行情
     ///
     /// 单次查询上限 60 只 (TDX 服务端硬限制)，超出自动截断并打印警告。
-    pub fn get_security_quotes(
-        &self,
-        all_stock: &[(u8, &str)],
-    ) -> Result<Vec<SecurityQuote>> {
+    pub fn get_security_quotes(&self, all_stock: &[(u8, &str)]) -> Result<Vec<SecurityQuote>> {
         // 检查是否有板块代码
         for &(_, code) in all_stock {
             self.check_not_block_code(code)?;
@@ -345,11 +358,7 @@ impl TdxDirectClient {
     // ================================================================
 
     /// 获取当日分时数据 (委托给历史分时 API，避免实时 API 价格编码异常)
-    pub fn get_minute_time_data(
-        &self,
-        market: u8,
-        code: &str,
-    ) -> Result<Vec<MinuteTimePrice>> {
+    pub fn get_minute_time_data(&self, market: u8, code: &str) -> Result<Vec<MinuteTimePrice>> {
         let today = utils::today_yyyymmdd();
         self.get_history_minute_time_data(market, code, today)
     }

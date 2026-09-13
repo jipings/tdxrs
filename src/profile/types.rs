@@ -37,7 +37,13 @@ impl F10Category {
     }
 
     /// 创建新的 F10Category (带原始字节)
-    pub fn new_with_raw(name: String, filename: String, filename_raw: Vec<u8>, start: u32, length: u32) -> Self {
+    pub fn new_with_raw(
+        name: String,
+        filename: String,
+        filename_raw: Vec<u8>,
+        start: u32,
+        length: u32,
+    ) -> Self {
         Self {
             name,
             filename,
@@ -106,7 +112,11 @@ impl F10Content {
         if self.content.chars().count() <= max_chars {
             &self.content
         } else {
-            &self.content[..self.content.char_indices().nth(max_chars).map_or(0, |(i, _)| i)]
+            &self.content[..self
+                .content
+                .char_indices()
+                .nth(max_chars)
+                .map_or(0, |(i, _)| i)]
         }
     }
 
@@ -224,10 +234,7 @@ mod tests {
 
     #[test]
     fn test_f10_content_new() {
-        let content = F10Content::new(
-            "公司概况".to_string(),
-            "hello world".to_string(),
-        );
+        let content = F10Content::new("公司概况".to_string(), "hello world".to_string());
 
         assert_eq!(content.category, "公司概况");
         assert_eq!(content.char_count(), 11);

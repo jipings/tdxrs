@@ -96,12 +96,15 @@ pub fn calc_fq_factors(
             continue;
         }
         let date_key = xd.year * 10000 + xd.month * 100 + xd.day;
-        events.push((date_key, FactorParts {
-            div_per_share: xd.fenhong.unwrap_or(0.0) / 10.0,
-            bonus_ratio: xd.songzhuangu.unwrap_or(0.0) / 10.0,
-            rights_ratio: xd.peigu.unwrap_or(0.0) / 10.0,
-            rights_price: xd.peigujia.unwrap_or(0.0),
-        }));
+        events.push((
+            date_key,
+            FactorParts {
+                div_per_share: xd.fenhong.unwrap_or(0.0) / 10.0,
+                bonus_ratio: xd.songzhuangu.unwrap_or(0.0) / 10.0,
+                rights_ratio: xd.peigu.unwrap_or(0.0) / 10.0,
+                rights_price: xd.peigujia.unwrap_or(0.0),
+            },
+        ));
     }
     events.sort_by_key(|e| e.0);
 
@@ -110,7 +113,11 @@ pub fn calc_fq_factors(
     for &(date_key, parts) in &events {
         if let Some(p_close) = find_close_before_event(bars, context_bars, date_key) {
             let qfq_factor = calc_qfq_factor(p_close, &parts);
-            let hfq_factor = if qfq_factor.abs() > 1e-10 { 1.0 / qfq_factor } else { 1.0 };
+            let hfq_factor = if qfq_factor.abs() > 1e-10 {
+                1.0 / qfq_factor
+            } else {
+                1.0
+            };
 
             cumulative_qfq *= qfq_factor;
 
@@ -130,7 +137,11 @@ pub fn calc_fq_factors(
     FqFactorResult {
         factors,
         cumulative_qfq,
-        cumulative_hfq: if cumulative_qfq.abs() > 1e-10 { 1.0 / cumulative_qfq } else { 1.0 },
+        cumulative_hfq: if cumulative_qfq.abs() > 1e-10 {
+            1.0 / cumulative_qfq
+        } else {
+            1.0
+        },
     }
 }
 
@@ -138,8 +149,8 @@ pub fn calc_fq_factors(
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FqType {
     None = 0,
-    Qfq = 1,  // 前复权
-    Hfq = 2,  // 后复权
+    Qfq = 1, // 前复权
+    Hfq = 2, // 后复权
 }
 
 /// 因子组成部分 (除权日价格无关的部分)
@@ -229,12 +240,15 @@ pub fn adjust_security_bars(
             continue;
         }
         let date_key = xd.year * 10000 + xd.month * 100 + xd.day;
-        events.push((date_key, FactorParts {
-            div_per_share: xd.fenhong.unwrap_or(0.0) / 10.0,
-            bonus_ratio: xd.songzhuangu.unwrap_or(0.0) / 10.0,
-            rights_ratio: xd.peigu.unwrap_or(0.0) / 10.0,
-            rights_price: xd.peigujia.unwrap_or(0.0),
-        }));
+        events.push((
+            date_key,
+            FactorParts {
+                div_per_share: xd.fenhong.unwrap_or(0.0) / 10.0,
+                bonus_ratio: xd.songzhuangu.unwrap_or(0.0) / 10.0,
+                rights_ratio: xd.peigu.unwrap_or(0.0) / 10.0,
+                rights_price: xd.peigujia.unwrap_or(0.0),
+            },
+        ));
     }
     events.sort_by_key(|e| e.0);
 
@@ -330,7 +344,12 @@ mod tests {
     #[test]
     fn test_calc_qfq_factor_cash_div() {
         // 简单分红: 前收盘 46.90, 分红 1.0/股
-        let parts = FactorParts { div_per_share: 1.0, bonus_ratio: 0.0, rights_ratio: 0.0, rights_price: 0.0 };
+        let parts = FactorParts {
+            div_per_share: 1.0,
+            bonus_ratio: 0.0,
+            rights_ratio: 0.0,
+            rights_price: 0.0,
+        };
         let factor = calc_qfq_factor(46.90, &parts);
         let expected = (46.90 - 1.0) / 46.90;
         assert!((factor - expected).abs() < 1e-10);
@@ -339,7 +358,12 @@ mod tests {
     #[test]
     fn test_calc_qfq_factor_bonus() {
         // 10送10: songzhuangu=10.0(每10股送10股)
-        let parts = FactorParts { div_per_share: 0.0, bonus_ratio: 1.0, rights_ratio: 0.0, rights_price: 0.0 };
+        let parts = FactorParts {
+            div_per_share: 0.0,
+            bonus_ratio: 1.0,
+            rights_ratio: 0.0,
+            rights_price: 0.0,
+        };
         let factor = calc_qfq_factor(20.0, &parts);
         // factor = 20 / (20 * 2) = 0.5
         assert!((factor - 0.5).abs() < 1e-10);
@@ -348,9 +372,17 @@ mod tests {
     #[test]
     fn test_adjust_no_event() {
         let mut bars = vec![SecurityBar {
-            open: 10.0, close: 11.0, high: 12.0, low: 9.0,
-            vol: 100.0, amount: 1000.0,
-            year: 2025, month: 6, day: 15, hour: 0, minute: 0,
+            open: 10.0,
+            close: 11.0,
+            high: 12.0,
+            low: 9.0,
+            vol: 100.0,
+            amount: 1000.0,
+            year: 2025,
+            month: 6,
+            day: 15,
+            hour: 0,
+            minute: 0,
             datetime: "2025-06-15".into(),
         }];
         let orig = bars[0].open;
@@ -362,15 +394,31 @@ mod tests {
     fn test_find_close_before_fallback_to_context() {
         // bars 中无日期早于事件的数据, 应回退到 context
         let bars = vec![SecurityBar {
-            open: 20.0, close: 21.0, high: 22.0, low: 19.0,
-            vol: 100.0, amount: 1000.0,
-            year: 2025, month: 6, day: 15, hour: 0, minute: 0,
+            open: 20.0,
+            close: 21.0,
+            high: 22.0,
+            low: 19.0,
+            vol: 100.0,
+            amount: 1000.0,
+            year: 2025,
+            month: 6,
+            day: 15,
+            hour: 0,
+            minute: 0,
             datetime: "".into(),
         }];
         let context = vec![SecurityBar {
-            open: 10.0, close: 11.0, high: 12.0, low: 9.0,
-            vol: 100.0, amount: 1000.0,
-            year: 2024, month: 6, day: 15, hour: 0, minute: 0,
+            open: 10.0,
+            close: 11.0,
+            high: 12.0,
+            low: 9.0,
+            vol: 100.0,
+            amount: 1000.0,
+            year: 2024,
+            month: 6,
+            day: 15,
+            hour: 0,
+            minute: 0,
             datetime: "".into(),
         }];
         // event at 2025-01-01 — bars 中所有数据 > 2025-01-01, 应回退到 context
@@ -383,22 +431,46 @@ mod tests {
     fn test_adjust_context_hfq() {
         // 后复权场景: events 在 bars 之前, close_before 从 context 获取
         let context = vec![SecurityBar {
-            open: 100.0, close: 100.0, high: 101.0, low: 99.0,
-            vol: 1000.0, amount: 100000.0,
-            year: 2024, month: 5, day: 1, hour: 0, minute: 0,
+            open: 100.0,
+            close: 100.0,
+            high: 101.0,
+            low: 99.0,
+            vol: 1000.0,
+            amount: 100000.0,
+            year: 2024,
+            month: 5,
+            day: 1,
+            hour: 0,
+            minute: 0,
             datetime: "".into(),
         }];
         let mut bars = vec![
             SecurityBar {
-                open: 103.0, close: 105.0, high: 106.0, low: 102.0,
-                vol: 1000.0, amount: 100000.0,
-                year: 2024, month: 9, day: 1, hour: 0, minute: 0,
+                open: 103.0,
+                close: 105.0,
+                high: 106.0,
+                low: 102.0,
+                vol: 1000.0,
+                amount: 100000.0,
+                year: 2024,
+                month: 9,
+                day: 1,
+                hour: 0,
+                minute: 0,
                 datetime: "".into(),
             },
             SecurityBar {
-                open: 110.0, close: 112.0, high: 113.0, low: 109.0,
-                vol: 1000.0, amount: 100000.0,
-                year: 2025, month: 3, day: 1, hour: 0, minute: 0,
+                open: 110.0,
+                close: 112.0,
+                high: 113.0,
+                low: 109.0,
+                vol: 1000.0,
+                amount: 100000.0,
+                year: 2025,
+                month: 3,
+                day: 1,
+                hour: 0,
+                minute: 0,
                 datetime: "".into(),
             },
         ];
@@ -406,23 +478,39 @@ mod tests {
         // close_before from context: 2024-05-01 close=100.0
         let xdxr = vec![XdXrInfo {
             category: 1,
-            year: 2024, month: 6, day: 15,
+            year: 2024,
+            month: 6,
+            day: 15,
             name: String::new(),
-            fenhong: Some(5.0), songzhuangu: Some(0.0),
-            peigu: Some(0.0), peigujia: Some(0.0), suogu: Some(0.0),
-            panqianliutong: None, panhouliutong: None,
-            qianzongguben: None, houzongguben: None,
-            fenshu: None, xingquanjia: None,
+            fenhong: Some(5.0),
+            songzhuangu: Some(0.0),
+            peigu: Some(0.0),
+            peigujia: Some(0.0),
+            suogu: Some(0.0),
+            panqianliutong: None,
+            panhouliutong: None,
+            qianzongguben: None,
+            houzongguben: None,
+            fenshu: None,
+            xingquanjia: None,
         }];
         // factor = (100.0 - 0.5) / 100.0 = 0.995
         // HFQ: bars after the event get cum *= 1/factor = 1.005025...
         // Both bars are after the event, so both get adjusted
         let expected_cum = 1.0 / 0.995;
         adjust_security_bars(&mut bars, &context, &xdxr, FqType::Hfq);
-        assert!((bars[0].close - 105.0 * expected_cum).abs() < 0.01,
-            "expected {}, got {}", 105.0 * expected_cum, bars[0].close);
-        assert!((bars[1].close - 112.0 * expected_cum).abs() < 0.01,
-            "expected {}, got {}", 112.0 * expected_cum, bars[1].close);
+        assert!(
+            (bars[0].close - 105.0 * expected_cum).abs() < 0.01,
+            "expected {}, got {}",
+            105.0 * expected_cum,
+            bars[0].close
+        );
+        assert!(
+            (bars[1].close - 112.0 * expected_cum).abs() < 0.01,
+            "expected {}, got {}",
+            112.0 * expected_cum,
+            bars[1].close
+        );
     }
 
     // CODE_REVIEW P2-5: 零/非有限因子不得污染价格序列
@@ -430,24 +518,49 @@ mod tests {
     fn test_adjust_zero_factor_guard() {
         use crate::protocol::types::{SecurityBar, XdXrInfo};
         let mk_bar = |y: u32| SecurityBar {
-            open: 10.0, high: 10.5, low: 9.5, close: 10.0, vol: 100.0, amount: 1000.0,
-            year: y, month: 6, day: 10, hour: 0, minute: 0,
+            open: 10.0,
+            high: 10.5,
+            low: 9.5,
+            close: 10.0,
+            vol: 100.0,
+            amount: 1000.0,
+            year: y,
+            month: 6,
+            day: 10,
+            hour: 0,
+            minute: 0,
             datetime: format!("{}-06-10", y),
         };
         let bars = vec![mk_bar(2024), mk_bar(2025), mk_bar(2026)];
         // 除权日 2025-06-10，分红=收盘价本身 → qfq factor = (10-10)/10 = 0
         let xdxr = vec![XdXrInfo {
-            year: 2025, month: 6, day: 10, category: 1, name: "除权除息".into(),
-            fenhong: Some(100.0), peigujia: Some(0.0), songzhuangu: Some(0.0),
-            peigu: Some(0.0), suogu: None, panqianliutong: None, panhouliutong: None,
-            qianzongguben: None, houzongguben: None, fenshu: None, xingquanjia: None,
+            year: 2025,
+            month: 6,
+            day: 10,
+            category: 1,
+            name: "除权除息".into(),
+            fenhong: Some(100.0),
+            peigujia: Some(0.0),
+            songzhuangu: Some(0.0),
+            peigu: Some(0.0),
+            suogu: None,
+            panqianliutong: None,
+            panhouliutong: None,
+            qianzongguben: None,
+            houzongguben: None,
+            fenshu: None,
+            xingquanjia: None,
         }];
         let mut qfq = bars.clone();
         adjust_security_bars(&mut qfq, &[], &xdxr, FqType::Qfq);
         let mut hfq = bars.clone();
         adjust_security_bars(&mut hfq, &[], &xdxr, FqType::Hfq);
         for b in qfq.iter().chain(hfq.iter()) {
-            assert!(b.close.is_finite() && b.close > 0.0, "close 被污染: {}", b.close);
+            assert!(
+                b.close.is_finite() && b.close > 0.0,
+                "close 被污染: {}",
+                b.close
+            );
         }
     }
 }

@@ -48,7 +48,7 @@ pub const SH_FUND_VOL_COEFFICIENT: f64 = 1.0;
 pub const SZ_FUND_VOL_COEFFICIENT: f64 = 0.01;
 
 // 市场代码: 复用 crate::protocol::constants
-pub use crate::protocol::constants::{MARKET_SZ, MARKET_SH};
+pub use crate::protocol::constants::{MARKET_SH, MARKET_SZ};
 
 /// 基金类型
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

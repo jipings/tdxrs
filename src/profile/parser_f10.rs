@@ -3,8 +3,8 @@
 //! 解析通达信 F10 原始文本，提取结构化数据。
 //! 基于港澳资讯格式，兼容不同公司的 F10 数据差异。
 
-use std::collections::HashMap;
 use regex::Regex;
+use std::collections::HashMap;
 
 /// F10 解析结果
 #[derive(Debug, Clone, Default)]
@@ -22,7 +22,8 @@ pub struct F10Parsed {
 impl F10Parsed {
     /// 获取指定字段
     pub fn get(&self, key: &str) -> Option<&str> {
-        self.basic_info.get(key)
+        self.basic_info
+            .get(key)
             .or_else(|| self.listing_info.get(key))
             .map(|s| s.as_str())
     }
@@ -90,7 +91,10 @@ impl F10TextParser {
 
         let matches: Vec<_> = pattern.find_iter(&self.raw).collect();
         for (i, m) in matches.iter().enumerate() {
-            let title = m.as_str().trim_matches(|c| c == '【' || c == '】').to_string();
+            let title = m
+                .as_str()
+                .trim_matches(|c| c == '【' || c == '】')
+                .to_string();
             let start = m.end();
             let end = if i + 1 < matches.len() {
                 matches[i + 1].start()
@@ -150,8 +154,14 @@ impl F10TextParser {
             ("发行方式", vec!["发行方式"]),
             ("发行量(股)", vec!["发行量(股)", "发行量(万股)"]),
             ("每股发行价(元)", vec!["每股发行价(元)", "发行价格(元)"]),
-            ("募集资金净额(元)", vec!["募集资金净额(元)", "募集资金净额(万)"]),
-            ("上市首日收盘价(元)", vec!["上市首日收盘价(元)", "上市首日收盘价"]),
+            (
+                "募集资金净额(元)",
+                vec!["募集资金净额(元)", "募集资金净额(万)"],
+            ),
+            (
+                "上市首日收盘价(元)",
+                vec!["上市首日收盘价(元)", "上市首日收盘价"],
+            ),
             ("主承销商", vec!["主承销商"]),
             ("保荐人", vec!["保荐人"]),
         ];
@@ -189,7 +199,8 @@ impl F10TextParser {
                 if ch == '|' || ch == '\u{FF5C}' || ch == '\u{2502}' {
                     // 找到竖线，提取后面的内容直到下一个竖线
                     let value_part = &after_field[i + ch.len_utf8()..];
-                    let value = value_part.split(['|', '\u{FF5C}', '\u{2502}', '\n'])
+                    let value = value_part
+                        .split(['|', '\u{FF5C}', '\u{2502}', '\n'])
                         .next()
                         .unwrap_or("")
                         .trim();
@@ -245,7 +256,10 @@ mod tests {
         let result = extract_basic_info(text);
         assert_eq!(result.get("公司名称").unwrap(), "贵州茅台酒股份有限公司");
         assert_eq!(result.get("证券代码").unwrap(), "600519");
-        assert_eq!(result.get("主营业务").unwrap(), "茅台酒及系列酒的生产与销售");
+        assert_eq!(
+            result.get("主营业务").unwrap(),
+            "茅台酒及系列酒的生产与销售"
+        );
     }
 
     #[test]

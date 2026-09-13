@@ -2,9 +2,9 @@
 //!
 //! 提供基金代码验证等辅助功能。
 
+use super::constants::is_fund;
 #[cfg(test)]
 use super::constants::{MARKET_SH, MARKET_SZ};
-use super::constants::is_fund;
 
 /// 基金代码验证错误
 #[derive(Debug, Clone)]

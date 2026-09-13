@@ -12,11 +12,14 @@ fn main() {
 
     // 1. 创建客户端并连接
     let client = TdxHqClient::new();
+    // Ok(false)=握手被拒 与 Err=连接失败 同样需要 failover ——
+    // 未连接直接继续只会让后续全部调用失败 (CODE_REVIEW E)
     match client.connect("218.75.126.9", 7709, Some(5.0)) {
         Ok(true) => println!("[OK] Connected to server"),
-        Ok(false) => println!("[FAIL] Connection rejected"),
-        Err(e) => {
-            println!("[ERROR] {}", e);
+        res => {
+            if let Err(e) = res {
+                println!("[ERROR] {}", e);
+            }
             println!("  Trying connect_to_any...");
             match client.connect_to_any(None) {
                 Ok(true) => println!("[OK] Connected via failover"),

@@ -5,8 +5,8 @@
 //!   2. 连接时长不同 — 全量获取可能持续数秒，不适合共享连接池
 //!   3. 避免影响行情数据的实时性
 
-
 use crate::error::Result;
+use crate::loge;
 use crate::net::connection::TcpConnection;
 use crate::net::packet::{ResponseHeader, RSP_HEADER_LEN};
 use crate::net::utils;
@@ -14,7 +14,6 @@ use crate::profile::constants::*;
 use crate::profile::parser::{parse_company_info_category, parse_company_info_content};
 use crate::profile::types::*;
 use crate::protocol::constants::{MARKET_SH, MARKET_SZ};
-use crate::{loge};
 
 /// F10 客户端默认超时 (秒)
 const DEFAULT_F10_TIMEOUT: f64 = 10.0;
@@ -71,11 +70,10 @@ impl TdxF10Client {
     // ============================================================
 
     fn send_and_recv(&self, packet: &[u8]) -> Result<Vec<u8>> {
-        let mut conn = TcpConnection::connect(&self.ip, self.port, self.timeout)
-            .map_err(|e| {
-                loge!("f10", "connect to {}:{} failed: {}", self.ip, self.port, e);
-                e
-            })?;
+        let mut conn = TcpConnection::connect(&self.ip, self.port, self.timeout).map_err(|e| {
+            loge!("f10", "connect to {}:{} failed: {}", self.ip, self.port, e);
+            e
+        })?;
         utils::perform_handshake(&mut conn)?;
 
         conn.send(packet)?;
@@ -114,16 +112,14 @@ impl TdxF10Client {
     pub fn get_category(&self, market: u8, code: &str) -> Result<Vec<F10Category>> {
         // 验证市场代码
         if market != MARKET_SZ && market != MARKET_SH {
-            return Err(crate::error_codes::ErrorCode::ARGUMENT_OUT_OF_RANGE.err(
-                format!("无效的市场代码: {} (仅支持 0=SZ, 1=SH)", market)
-            ));
+            return Err(crate::error_codes::ErrorCode::ARGUMENT_OUT_OF_RANGE
+                .err(format!("无效的市场代码: {} (仅支持 0=SZ, 1=SH)", market)));
         }
 
         // 验证股票代码
         if code.len() != 6 {
-            return Err(crate::error_codes::ErrorCode::INVALID_STOCK_CODE.err(
-                format!("{} (必须为 6 位数字)", code)
-            ));
+            return Err(crate::error_codes::ErrorCode::INVALID_STOCK_CODE
+                .err(format!("{} (必须为 6 位数字)", code)));
         }
 
         // 构建请求包
@@ -165,16 +161,14 @@ impl TdxF10Client {
     ) -> Result<F10Content> {
         // 验证市场代码
         if market != MARKET_SZ && market != MARKET_SH {
-            return Err(crate::error_codes::ErrorCode::ARGUMENT_OUT_OF_RANGE.err(
-                format!("无效的市场代码: {} (仅支持 0=SZ, 1=SH)", market)
-            ));
+            return Err(crate::error_codes::ErrorCode::ARGUMENT_OUT_OF_RANGE
+                .err(format!("无效的市场代码: {} (仅支持 0=SZ, 1=SH)", market)));
         }
 
         // 验证股票代码
         if code.len() != 6 {
-            return Err(crate::error_codes::ErrorCode::INVALID_STOCK_CODE.err(
-                format!("{} (必须为 6 位数字)", code)
-            ));
+            return Err(crate::error_codes::ErrorCode::INVALID_STOCK_CODE
+                .err(format!("{} (必须为 6 位数字)", code)));
         }
 
         // 构建请求包
@@ -218,10 +212,7 @@ impl TdxF10Client {
         // 解析响应
         let content = parse_company_info_content(&response)?;
 
-        Ok(F10Content::new(
-            category.name.clone(),
-            content,
-        ))
+        Ok(F10Content::new(category.name.clone(), content))
     }
 
     /// 获取指定分类的内容
@@ -230,30 +221,22 @@ impl TdxF10Client {
     /// * `market` - 市场代码
     /// * `code` - 股票代码
     /// * `name` - 分类名称 (如 "公司概况")
-    pub fn get_content_by_name(
-        &self,
-        market: u8,
-        code: &str,
-        name: &str,
-    ) -> Result<F10Content> {
+    pub fn get_content_by_name(&self, market: u8, code: &str, name: &str) -> Result<F10Content> {
         // 先获取分类列表
         let categories = self.get_category(market, code)?;
 
         // 查找指定分类
-        let category = categories
-            .iter()
-            .find(|c| c.name == name)
-            .ok_or_else(|| {
-                crate::error_codes::ErrorCode::MISSING_FIELD.err(format!(
-                    "未找到分类 '{}'，可用分类: {}",
-                    name,
-                    categories
-                        .iter()
-                        .map(|c| c.name.as_str())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                ))
-            })?;
+        let category = categories.iter().find(|c| c.name == name).ok_or_else(|| {
+            crate::error_codes::ErrorCode::MISSING_FIELD.err(format!(
+                "未找到分类 '{}'，可用分类: {}",
+                name,
+                categories
+                    .iter()
+                    .map(|c| c.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ))
+        })?;
 
         self.get_content(market, code, category)
     }
@@ -263,11 +246,7 @@ impl TdxF10Client {
     /// # 参数
     /// * `market` - 市场代码
     /// * `code` - 股票代码
-    pub fn get_all_contents(
-        &self,
-        market: u8,
-        code: &str,
-    ) -> Result<Vec<F10Content>> {
+    pub fn get_all_contents(&self, market: u8, code: &str) -> Result<Vec<F10Content>> {
         let categories = self.get_category(market, code)?;
         let mut contents = Vec::with_capacity(categories.len());
 

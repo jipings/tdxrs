@@ -29,8 +29,8 @@ pub mod parser;
 pub mod parser_f10;
 pub mod types;
 
-pub use client::ProfileClient;
 pub use crate::net::utils::auto_market;
+pub use client::ProfileClient;
 pub use constants::*;
-pub use parser_f10::{parse_f10_text, extract_basic_info, F10Parsed, F10TextParser};
+pub use parser_f10::{extract_basic_info, parse_f10_text, F10Parsed, F10TextParser};
 pub use types::*;

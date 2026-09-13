@@ -1,8 +1,8 @@
 //! F10 模块响应解析器
 
-use crate::error::{Result, TdxError};
 use super::constants::*;
 use super::types::*;
+use crate::error::{Result, TdxError};
 
 /// 解析公司信息分类响应
 ///
@@ -45,24 +45,20 @@ pub fn parse_company_info_category(data: &[u8]) -> Result<Vec<F10Category>> {
         pos += CATEGORY_FILENAME_SIZE;
 
         // 解析起始位置 (u32, little-endian)
-        let start = u32::from_le_bytes([
-            data[pos],
-            data[pos + 1],
-            data[pos + 2],
-            data[pos + 3],
-        ]);
+        let start = u32::from_le_bytes([data[pos], data[pos + 1], data[pos + 2], data[pos + 3]]);
         pos += 4;
 
         // 解析数据长度 (u32, little-endian)
-        let length = u32::from_le_bytes([
-            data[pos],
-            data[pos + 1],
-            data[pos + 2],
-            data[pos + 3],
-        ]);
+        let length = u32::from_le_bytes([data[pos], data[pos + 1], data[pos + 2], data[pos + 3]]);
         pos += 4;
 
-        categories.push(F10Category::new_with_raw(name, filename, filename_raw, start, length));
+        categories.push(F10Category::new_with_raw(
+            name,
+            filename,
+            filename_raw,
+            start,
+            length,
+        ));
     }
 
     Ok(categories)
@@ -218,9 +214,7 @@ mod tests {
         data.extend_from_slice(&20u16.to_le_bytes());
 
         // 内容: "测试内容" (GBK)
-        let content_gbk = &[
-            0xB2, 0xE2, 0xCA, 0xD4, 0xC4, 0xDC, 0xC1, 0xEE,
-        ];
+        let content_gbk = &[0xB2, 0xE2, 0xCA, 0xD4, 0xC4, 0xDC, 0xC1, 0xEE];
         // 填充到 20 字节
         let mut content = vec![0u8; 20];
         content[..content_gbk.len()].copy_from_slice(content_gbk);
