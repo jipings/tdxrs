@@ -115,8 +115,13 @@ impl ConnectionTask {
         while total < len {
             // 读超时：此前直接 read().await，服务器僵死则请求永久挂起并
             // 堵死整条连接 (CODE_REVIEW P1-3)。行情响应毫秒级，30s 极宽松。
-            let n = self.stream.read(&mut buf[total..]).await
-                .map_err(|e| TdxError::Connection(format!("recv: {}", e)))?;
+            let n = tokio::time::timeout(
+                Duration::from_secs(30),
+                self.stream.read(&mut buf[total..]),
+            )
+            .await
+            .map_err(|_| TdxError::Connection("recv timeout (30s)".into()))?
+            .map_err(|e| TdxError::Connection(format!("recv: {}", e)))?;
             if n == 0 {
                 return Err(TdxError::Disconnected);
             }
@@ -239,6 +244,8 @@ pub struct AsyncTdxHqClient {
     heartbeat_stop: tokio::sync::Mutex<Option<oneshot::Sender<()>>>,
     /// 连接是否存活 (心跳检测)
     connected: Arc<std::sync::atomic::AtomicBool>,
+    /// 当前连接的服务器 (断线重连用) (CODE_REVIEW P1-3)
+    current_server: tokio::sync::Mutex<Option<(String, u16)>>,
     /// 复权上下文数据量档位 (默认 Mid ≈ 20 年), 以 u8 存储
     fq_context_tier: AtomicU8,
 }
@@ -265,6 +272,7 @@ impl AsyncTdxHqClient {
             cache_ttl: Duration::from_secs(30),
             pool_size: pool_size.max(1),
             heartbeat_stop: tokio::sync::Mutex::new(None),
+            current_server: tokio::sync::Mutex::new(None),
             connected: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             fq_context_tier: AtomicU8::new(utils::FqContextTier::default() as u8),
         }
@@ -274,6 +282,7 @@ impl AsyncTdxHqClient {
     pub async fn connect(&self, ip: &str, port: u16, timeout: Option<f64>) -> Result<bool> {
         let timeout_secs = timeout.unwrap_or(CONNECT_TIMEOUT);
         let mut conns = self.connections.lock().await;
+        *self.current_server.lock().await = Some((ip.to_string(), port));
 
         // 清理旧连接
         conns.clear();
@@ -310,6 +319,7 @@ impl AsyncTdxHqClient {
     pub async fn disconnect(&self) {
         self.stop_heartbeat().await;
         self.connections.lock().await.clear();
+        *self.current_server.lock().await = None;
         self.connected
             .store(false, std::sync::atomic::Ordering::SeqCst);
     }
@@ -436,24 +446,40 @@ impl AsyncTdxHqClient {
     // 内部: 发送请求 (轮转 + 限流 + 重试)
     // ================================================================
 
-    /// 发送请求并接收响应 (限流 + 重试)
+    /// 发送请求并接收响应 (限流 + 重试 + 断线重连)
     async fn send_and_recv(&self, packet: &[u8]) -> Result<Vec<u8>> {
         self.rate_limiter.wait().await;
 
         // 第一次尝试
         match self.try_send(packet).await {
             Ok(body) => Ok(body),
-            Err(e) => {
-                // 重试
+            Err(first_err) => {
+                // 重试 (每次检查连接存活，必要时重连; 返回最后一次错误)
+                let mut last_err = first_err;
                 for (i, &interval) in RETRY_INTERVALS.iter().enumerate() {
                     tokio::time::sleep(Duration::from_secs_f64(interval)).await;
+
+                    // 断线重连: 此前重试只重发不检查 connected，死连接上
+                    // 重试必然全部失败 (CODE_REVIEW P1-3)
+                    if !self.is_connected() {
+                        let server = self.current_server.lock().await.clone();
+                        if let Some((ip, port)) = server {
+                            let _ = self.connect(&ip, port, None).await;
+                        }
+                    }
+
                     match self.try_send(packet).await {
                         Ok(body) => return Ok(body),
-                        Err(_) if i + 1 == RETRY_INTERVALS.len() => return Err(e),
-                        Err(_) => continue,
+                        Err(e) => {
+                            last_err = e;
+                            if i + 1 == RETRY_INTERVALS.len() {
+                                return Err(last_err);
+                            }
+                            continue;
+                        }
                     }
                 }
-                Err(e)
+                Err(last_err)
             }
         }
     }
