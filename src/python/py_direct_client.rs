@@ -1,6 +1,8 @@
 //! TdxDirectClient Python 绑定
 //!
-//! 裸连接客户端: 无连接池、无重试、无心跳, 每请求新建 TCP 连接
+//! 裸连接客户端: 无连接池、无重试、无心跳, 每请求新建 TCP 连接。
+//! 正因如此，全部网络方法必须 py.detach 释放 GIL——
+//! 每次调用都是完整建连+握手+收发周期 (CODE_REVIEW B)
 
 use std::sync::Mutex;
 
@@ -46,12 +48,18 @@ impl PyTdxDirectClient {
 
     /// 更新服务器地址
     fn set_server(&self, ip: &str, port: u16) {
-        self.client.lock().unwrap_or_else(|e| e.into_inner()).set_server(ip, port);
+        self.client
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .set_server(ip, port);
     }
 
     /// 更新超时
     fn set_timeout(&self, timeout: f64) {
-        self.client.lock().unwrap_or_else(|e| e.into_inner()).set_timeout(timeout);
+        self.client
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .set_timeout(timeout);
     }
 
     // ============================================================
@@ -62,10 +70,22 @@ impl PyTdxDirectClient {
     // 协议参数天然超过 7 个，签名与底层一致
     #[pyo3(signature = (category, market, code, start=0, count=800, fq=1))]
     fn get_security_bars(
-        &self, py: Python<'_>, category: u8, market: u8, code: &str,
-        start: u32, count: u16, fq: u8,
+        &self,
+        py: Python<'_>,
+        category: u8,
+        market: u8,
+        code: &str,
+        start: u32,
+        count: u16,
+        fq: u8,
     ) -> PyResult<Py<PyAny>> {
-        let bars = py.detach(|| self.client.lock().unwrap_or_else(|e| e.into_inner()).get_security_bars(category, market, code, start, count, fq))
+        let bars = py
+            .detach(|| {
+                self.client
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .get_security_bars(category, market, code, start, count, fq)
+            })
             .map_err(to_py_err)?;
         bars_to_list(py, &bars, |b, d| {
             d.set_item("open", b.open)?;
@@ -88,10 +108,22 @@ impl PyTdxDirectClient {
     // 协议参数天然超过 7 个，签名与底层一致
     #[pyo3(signature = (category, market, code, start=0, count=800, fq=1))]
     fn get_index_bars(
-        &self, py: Python<'_>, category: u8, market: u8, code: &str,
-        start: u32, count: u16, fq: u8,
+        &self,
+        py: Python<'_>,
+        category: u8,
+        market: u8,
+        code: &str,
+        start: u32,
+        count: u16,
+        fq: u8,
     ) -> PyResult<Py<PyAny>> {
-        let bars = py.detach(|| self.client.lock().unwrap_or_else(|e| e.into_inner()).get_index_bars(category, market, code, start, count, fq))
+        let bars = py
+            .detach(|| {
+                self.client
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .get_index_bars(category, market, code, start, count, fq)
+            })
             .map_err(to_py_err)?;
         bars_to_list(py, &bars, |b, d| {
             d.set_item("open", b.open)?;
@@ -117,10 +149,19 @@ impl PyTdxDirectClient {
     // ============================================================
 
     fn get_security_quotes(
-        &self, py: Python<'_>, all_stock: Vec<(u8, String)>,
+        &self,
+        py: Python<'_>,
+        all_stock: Vec<(u8, String)>,
     ) -> PyResult<Py<PyAny>> {
         let refs: Vec<(u8, &str)> = all_stock.iter().map(|(m, c)| (*m, c.as_str())).collect();
-        let quotes = self.client.lock().unwrap_or_else(|e| e.into_inner()).get_security_quotes(&refs)
+        // 裸连接设计: 每次调用都是完整建连+握手+收发周期，必须释放 GIL
+        let quotes = py
+            .detach(|| {
+                self.client
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .get_security_quotes(&refs)
+            })
             .map_err(to_py_err)?;
         quotes_to_list(py, &quotes)
     }
@@ -131,14 +172,27 @@ impl PyTdxDirectClient {
 
     #[pyo3(signature = (market, start=0))]
     fn get_security_list(&self, py: Python<'_>, market: u8, start: u16) -> PyResult<Py<PyAny>> {
-        let list = self.client.lock().unwrap_or_else(|e| e.into_inner()).get_security_list(market, start)
+        let list = py
+            .detach(|| {
+                self.client
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .get_security_list(market, start)
+            })
             .map_err(to_py_err)?;
         sec_list_to_list(py, &list)
     }
 
-    fn get_security_count(&self, market: u8) -> PyResult<u16> {
-        self.client.lock().unwrap_or_else(|e| e.into_inner()).get_security_count(market)
-            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
+    fn get_security_count(&self, py: Python<'_>, market: u8) -> PyResult<u16> {
+        // 错误映射统一走 to_py_err: 此前硬编码 PyValueError，
+        // 断线类错误会被误报为参数错误 (CODE_REVIEW P2-9)
+        py.detach(|| {
+            self.client
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .get_security_count(market)
+        })
+        .map_err(to_py_err)
     }
 
     // ============================================================
@@ -146,51 +200,108 @@ impl PyTdxDirectClient {
     // ============================================================
 
     fn get_minute_time_data(&self, py: Python<'_>, market: u8, code: &str) -> PyResult<Py<PyAny>> {
-        let data = self.client.lock().unwrap_or_else(|e| e.into_inner()).get_minute_time_data(market, code)
+        let data = py
+            .detach(|| {
+                self.client
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .get_minute_time_data(market, code)
+            })
             .map_err(to_py_err)?;
         minute_to_list(py, &data)
     }
 
     fn get_history_minute_time_data(
-        &self, py: Python<'_>, market: u8, code: &str, date: u32,
+        &self,
+        py: Python<'_>,
+        market: u8,
+        code: &str,
+        date: u32,
     ) -> PyResult<Py<PyAny>> {
-        let data = self.client.lock().unwrap_or_else(|e| e.into_inner()).get_history_minute_time_data(market, code, date)
+        let data = py
+            .detach(|| {
+                self.client
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .get_history_minute_time_data(market, code, date)
+            })
             .map_err(to_py_err)?;
         minute_to_list(py, &data)
     }
 
     #[pyo3(signature = (market, code, start=0, count=2000))]
     fn get_transaction_data(
-        &self, py: Python<'_>, market: u8, code: &str, start: u16, count: u16,
+        &self,
+        py: Python<'_>,
+        market: u8,
+        code: &str,
+        start: u16,
+        count: u16,
     ) -> PyResult<Py<PyAny>> {
-        let data = self.client.lock().unwrap_or_else(|e| e.into_inner()).get_transaction_data(market, code, start, count)
+        let data = py
+            .detach(|| {
+                self.client
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .get_transaction_data(market, code, start, count)
+            })
             .map_err(to_py_err)?;
         tick_to_list(py, &data)
     }
 
     #[pyo3(signature = (market, code, start=0, count=2000, date=0))]
     fn get_history_transaction_data(
-        &self, py: Python<'_>, market: u8, code: &str, start: u16, count: u16, date: u32,
+        &self,
+        py: Python<'_>,
+        market: u8,
+        code: &str,
+        start: u16,
+        count: u16,
+        date: u32,
     ) -> PyResult<Py<PyAny>> {
-        let data = py.detach(|| self.client.lock().unwrap_or_else(|e| e.into_inner()).get_history_transaction_data(market, code, start, count, date))
+        let data = py
+            .detach(|| {
+                self.client
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .get_history_transaction_data(market, code, start, count, date)
+            })
             .map_err(to_py_err)?;
         tick_to_list(py, &data)
     }
 
     fn get_finance_info(&self, py: Python<'_>, market: u8, code: &str) -> PyResult<Py<PyAny>> {
-        let info = self.client.lock().unwrap_or_else(|e| e.into_inner()).get_finance_info(market, code)
+        let info = py
+            .detach(|| {
+                self.client
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .get_finance_info(market, code)
+            })
             .map_err(to_py_err)?;
         finance_to_dict(py, &info)
     }
 
     fn get_xdxr_info(&self, py: Python<'_>, market: u8, code: &str) -> PyResult<Py<PyAny>> {
-        let data = self.client.lock().unwrap_or_else(|e| e.into_inner()).get_xdxr_info(market, code)
+        let data = py
+            .detach(|| {
+                self.client
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .get_xdxr_info(market, code)
+            })
             .map_err(to_py_err)?;
         xdxr_to_list(py, &data)
     }
 
     fn get_and_parse_block_info(&self, py: Python<'_>, block_file: &str) -> PyResult<Py<PyAny>> {
-        let data = self.client.lock().unwrap_or_else(|e| e.into_inner()).get_and_parse_block_info(block_file)
+        let data = py
+            .detach(|| {
+                self.client
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .get_and_parse_block_info(block_file)
+            })
             .map_err(to_py_err)?;
         block_to_list(py, &data)
     }
@@ -204,7 +315,8 @@ use crate::protocol::types::*;
 use crate::reader::block::BlockRecord;
 
 fn bars_to_list<B, F>(py: Python<'_>, bars: &[B], fill: F) -> PyResult<Py<PyAny>>
-where F: Fn(&B, &Bound<'_, PyDict>) -> PyResult<()>
+where
+    F: Fn(&B, &Bound<'_, PyDict>) -> PyResult<()>,
 {
     let list = PyList::empty(py);
     for b in bars {
