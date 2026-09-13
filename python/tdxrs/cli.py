@@ -89,9 +89,11 @@ def check_limit(key, value):
 
 
 def auto_market(code):
-    """根据代码自动判断市场"""
+    """根据代码自动判断市场（4/8 开头为北交所，返回 None 由调用方处理）"""
     if code.startswith(("6", "5", "9")):
         return MARKET_SH
+    if code.startswith(("4", "8")):
+        return None  # 北交所：行情接口市场号未定，不静默归入深证
     return MARKET_SZ
 
 

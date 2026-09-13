@@ -17,8 +17,13 @@ pub struct DailyBarReader {
 impl DailyBarReader {
     #[new]
     #[pyo3(signature = (coefficient=0.01))]
-    fn new(coefficient: f64) -> Self {
-        Self { coefficient }
+    fn new(coefficient: f64) -> PyResult<Self> {
+        if !coefficient.is_finite() || coefficient <= 0.0 {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "invalid coefficient {}: must be finite and > 0", coefficient
+            )));
+        }
+        Ok(Self { coefficient })
     }
 
     /// 解析日线数据，返回 Python list of dict

@@ -318,7 +318,17 @@ class Downloader:
 
                 # 获取股票列表
                 if codes is None:
-                    stock_list = self._fetch_stock_list(market)
+                    # 此前在 try 之外：服务器全挂时整个下载任务崩溃，
+                    # 已下载部分无 summary (CODE_REVIEW P2-9)
+                    try:
+                        stock_list = self._fetch_stock_list(market)
+                    except Exception as e:
+                        print(f"[ERROR] {market_name} 获取股票列表失败: {e}")
+                        self._save_checkpoint(market_name, dir_name, "", 0, 0)
+                        continue
+                    if not stock_list:
+                        print(f"[WARN] {market_name} 股票列表为空，跳过")
+                        continue
                 else:
                     stock_list = [(market, c) for c in codes]
 
@@ -658,15 +668,20 @@ class Downloader:
             writer = csv.writer(f)
             if not append:
                 writer.writerow(["date", "open", "high", "low", "close", "amount", "volume"])
+            def px(v):
+                # 价格精度自适应：低价股/基金需要 3 位小数
+                # (CODE_REVIEW P2-9，此前写死 2 位丢精度)
+                return f"{v:.3f}" if v < 10.0 else f"{v:.2f}"
+
             for bar in bars:
                 dt = bar["datetime"]
                 date_part = dt[:10] if len(dt) >= 10 else dt
                 writer.writerow([
                     date_part,
-                    f"{bar['open']:.2f}",
-                    f"{bar['high']:.2f}",
-                    f"{bar['low']:.2f}",
-                    f"{bar['close']:.2f}",
+                    px(bar['open']),
+                    px(bar['high']),
+                    px(bar['low']),
+                    px(bar['close']),
                     f"{bar['amount']:.2f}",
                     int(bar["vol"]),
                 ])
