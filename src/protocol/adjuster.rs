@@ -244,6 +244,12 @@ pub fn adjust_security_bars(
     for &(date_key, parts) in &events {
         if let Some(p_close) = find_close_before_event(bars, context_bars, date_key) {
             let factor = calc_qfq_factor(p_close, &parts);
+            // 服务器可控的 f32 除权字段可含 -0.0/极值/NaN：零因子使 HFQ
+            // 累计变 inf、QFQ 累计归零，非有限值污染整条价格序列
+            // (CODE_REVIEW P2-5)
+            if !factor.is_finite() || factor.abs() < 1e-10 {
+                continue;
+            }
             factor_map.insert(date_key, factor);
         }
     }
@@ -417,5 +423,31 @@ mod tests {
             "expected {}, got {}", 105.0 * expected_cum, bars[0].close);
         assert!((bars[1].close - 112.0 * expected_cum).abs() < 0.01,
             "expected {}, got {}", 112.0 * expected_cum, bars[1].close);
+    }
+
+    // CODE_REVIEW P2-5: 零/非有限因子不得污染价格序列
+    #[test]
+    fn test_adjust_zero_factor_guard() {
+        use crate::protocol::types::{SecurityBar, XdXrInfo};
+        let mk_bar = |y: u32| SecurityBar {
+            open: 10.0, high: 10.5, low: 9.5, close: 10.0, vol: 100.0, amount: 1000.0,
+            year: y, month: 6, day: 10, hour: 0, minute: 0,
+            datetime: format!("{}-06-10", y),
+        };
+        let bars = vec![mk_bar(2024), mk_bar(2025), mk_bar(2026)];
+        // 除权日 2025-06-10，分红=收盘价本身 → qfq factor = (10-10)/10 = 0
+        let xdxr = vec![XdXrInfo {
+            year: 2025, month: 6, day: 10, category: 1, name: "除权除息".into(),
+            fenhong: Some(100.0), peigujia: Some(0.0), songzhuangu: Some(0.0),
+            peigu: Some(0.0), suogu: None, panqianliutong: None, panhouliutong: None,
+            qianzongguben: None, houzongguben: None, fenshu: None, xingquanjia: None,
+        }];
+        let mut qfq = bars.clone();
+        adjust_security_bars(&mut qfq, &[], &xdxr, FqType::Qfq);
+        let mut hfq = bars.clone();
+        adjust_security_bars(&mut hfq, &[], &xdxr, FqType::Hfq);
+        for b in qfq.iter().chain(hfq.iter()) {
+            assert!(b.close.is_finite() && b.close > 0.0, "close 被污染: {}", b.close);
+        }
     }
 }
