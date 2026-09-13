@@ -290,9 +290,13 @@ impl TdxHqClient {
 
             match result {
                 Ok((tcp_ms, hs_ms)) => {
-                    let api_ms = {
-                        let mut conn = TcpConnection::connect(ip, port, timeout_secs).unwrap();
-                        utils::perform_handshake(&mut conn).unwrap();
+                    // 第二段 API 探测同样全程容错：被探测的公网服务器在两次
+                    // 连接之间闪断属常态，此处 unwrap 会让任一服务器 panic 掉
+                    // 整个进程 (PanicException 不可被 except Exception 捕获)
+                    // (CODE_REVIEW P0-2)
+                    let api_ms = (|| -> std::result::Result<f64, TdxError> {
+                        let mut conn = TcpConnection::connect(ip, port, timeout_secs)?;
+                        utils::perform_handshake(&mut conn)?;
                         let start = Instant::now();
                         let mut pkt = Vec::with_capacity(18);
                         pkt.extend_from_slice(&[
@@ -300,23 +304,28 @@ impl TdxHqClient {
                         ]);
                         pkt.extend_from_slice(&(1u16.to_le_bytes()));
                         pkt.extend_from_slice(&[0x75, 0xc7, 0x33, 0x01]);
-                        conn.send(&pkt).unwrap();
-                        let head = conn.recv(RSP_HEADER_LEN).unwrap();
-                        let h = ResponseHeader::parse(&head).unwrap();
+                        conn.send(&pkt)?;
+                        let head = conn.recv(RSP_HEADER_LEN)?;
+                        let h = ResponseHeader::parse(&head)?;
                         let zs = h.zip_size as usize;
                         let mut body = Vec::with_capacity(zs);
                         while body.len() < zs {
-                            body.extend_from_slice(&conn.recv(zs - body.len()).unwrap());
+                            body.extend_from_slice(&conn.recv(zs - body.len())?);
                         }
-                        start.elapsed().as_secs_f64() * 1000.0
-                    };
-                    results.push((name, ip, port, tcp_ms, hs_ms, api_ms));
+                        Ok(start.elapsed().as_secs_f64() * 1000.0)
+                    })();
+                    match api_ms {
+                        // 中途断连的服务器不进榜：带着垃圾 api_ms 排名会误导 reorder
+                        Ok(ms) => results.push((name, ip, port, tcp_ms, hs_ms, ms)),
+                        Err(_) => continue,
+                    }
                 }
                 Err(_) => continue,
             }
         }
 
-        results.sort_by(|a, b| a.5.partial_cmp(&b.5).unwrap());
+        // 排序键理论上恒为有限时长，NaN 时保持原序而非 panic (P0-2)
+        results.sort_by(|a, b| a.5.partial_cmp(&b.5).unwrap_or(std::cmp::Ordering::Equal));
         results
     }
 
