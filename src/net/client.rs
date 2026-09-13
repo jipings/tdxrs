@@ -423,7 +423,14 @@ impl TdxHqClient {
 
         let handle = std::thread::spawn(move || {
             while !stop_clone.load(Ordering::Relaxed) {
-                std::thread::sleep(interval);
+                // 心跳间隔拆 200ms 粒度轮询停止信号：整段 sleep 会让
+                // disconnect() 白等最长一个心跳周期 (CODE_REVIEW P2-3)
+                let mut waited = Duration::ZERO;
+                while waited < interval && !stop_clone.load(Ordering::Relaxed) {
+                    let step = Duration::from_millis(200).min(interval - waited);
+                    std::thread::sleep(step);
+                    waited += step;
+                }
                 if stop_clone.load(Ordering::Relaxed) {
                     break;
                 }
@@ -473,6 +480,9 @@ impl TdxHqClient {
                         // 尝试重连到替代服务器 (跳过当前失败的服务器)
                         let mut reconnected = false;
                         for &(name, ip, port) in PRIMARY_SERVERS {
+                            if stop_clone.load(Ordering::Relaxed) {
+                                break; // disconnect() 请求停止时不再扫服务器 (P2-3)
+                            }
                             if ip == current_server.0 && port == current_server.1 {
                                 continue; // 跳过当前失败的服务器
                             }
