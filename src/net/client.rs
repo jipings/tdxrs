@@ -101,10 +101,6 @@ impl TdxHqClient {
         self.connect_internal(ip, port, timeout, true)
     }
 
-    /// 内部连接（connect_to_any / 重试重连路径）：与显式 connect 保持
-    /// 一致的保活行为 —— 此前这些入口不启动心跳，同一客户端两条入口
-    /// 保活行为不同 (CODE_REVIEW P2-1)
-
     /// 连接到任意可用服务器
     ///
     /// 遍历顺序: 上次成功服务器 → 用户自定义列表 → PRIMARY_SERVERS → ALL_KNOWN_SERVERS

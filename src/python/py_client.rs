@@ -416,7 +416,7 @@ impl PyTdxHqClient {
     fn get_security_count(&self, market: u8) -> PyResult<u16> {
         self.client
             .get_security_count(market)
-            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
+            .map_err(to_py_err)
     }
 
     /// 获取分时数据

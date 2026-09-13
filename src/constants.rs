@@ -82,6 +82,7 @@ pub fn read_u16(data: &[u8], pos: usize) -> u16 {
 
 /// 安全地读取 f32 (little-endian)
 #[inline(always)]
+/// 注意：越界时 panic（裸索引），仅可用于已校验长度的本地文件
 pub fn read_f32(data: &[u8], pos: usize) -> f32 {
     f32::from_le_bytes([data[pos], data[pos + 1], data[pos + 2], data[pos + 3]])
 }

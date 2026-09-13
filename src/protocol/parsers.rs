@@ -31,7 +31,7 @@ pub fn parse_security_list(body: &[u8]) -> Result<Vec<SecurityInfo>> {
     let mut pos = 2;
     let record_size = 29; // <6sH8s4sBI4s>
 
-    let mut result = Vec::with_capacity(count);
+    let mut result = Vec::with_capacity(count.min(body.len() / 4).max(1));
 
     for _ in 0..count {
         if pos + record_size > body.len() {
@@ -93,7 +93,7 @@ pub fn parse_security_bars(body: &[u8], category: u8) -> Result<Vec<SecurityBar>
 
     let count = read_u16(body, 0) as usize;
     let mut pos = 2;
-    let mut result = Vec::with_capacity(count);
+    let mut result = Vec::with_capacity(count.min(body.len() / 4).max(1));
     let mut pre_diff_base: i64 = 0;
 
     for _ in 0..count {
@@ -187,7 +187,7 @@ pub fn parse_index_bars(body: &[u8], category: u8) -> Result<Vec<IndexBar>> {
 
     let count = read_u16(body, 0) as usize;
     let mut pos = 2;
-    let mut result = Vec::with_capacity(count);
+    let mut result = Vec::with_capacity(count.min(body.len() / 4).max(1));
     let mut pre_diff_base: i64 = 0;
 
     for _ in 0..count {
@@ -314,13 +314,17 @@ pub fn parse_minute_time_data(body: &[u8], market: u8, code: &str) -> Result<Vec
     // 实时分时数据头部: 2(count) + 2(padding) + 1(indicator) + 6(stock_code) + 2(unknown) = 13 bytes
     // 注意: 此偏移量基于逆向分析，可能不完全准确
     let mut pos = 13;
-    let mut result = Vec::with_capacity(count);
+    let mut result = Vec::with_capacity(count.min(body.len() / 4).max(1));
 
     let mut pre_diff_base: i64 = 0;
     let mut cum_amount: f64 = 0.0;
     let mut cum_vol: f64 = 0.0;
 
     for i in 0..count {
+        // 边界保护 (CODE_REVIEW P2-9)
+        if pos + 3 > body.len() {
+            break;
+        }
         let (price_diff, new_pos) = get_price(body, pos);
         pre_diff_base += price_diff;
         let price = (pre_diff_base as f64) * coefficient;
@@ -419,11 +423,16 @@ pub fn parse_transaction_data_with_coefficient(body: &[u8], coefficient: f64) ->
 
     let count = read_u16(body, 0) as usize;
     let mut pos = 2;
-    let mut result = Vec::with_capacity(count);
+    let mut result = Vec::with_capacity(count.min(body.len() / 4).max(1));
 
     let mut last_price: i64 = 0;
 
     for _ in 0..count {
+        // 边界保护：截断响应在此终止而非伪造全零记录
+        // (CODE_REVIEW P2-9，对照 parse_history_transaction_data)
+        if pos + 6 > body.len() {
+            break;
+        }
         // time (u16 minutes)
         let minutes = read_u16(body, pos) as u32;
         pos += 2;
@@ -613,7 +622,7 @@ pub fn parse_security_quotes(body: &[u8]) -> Result<Vec<SecurityQuote>> {
     let count = read_u16(body, pos) as usize;
     pos += 2;
 
-    let mut result = Vec::with_capacity(count);
+    let mut result = Vec::with_capacity(count.min(body.len() / 4).max(1));
 
     for _ in 0..count {
         // 边界保护: 单条记录最小约 34~56 字节（21 个 varint 各至少 1B +
@@ -896,7 +905,7 @@ pub fn parse_xdxr_info(body: &[u8]) -> Result<Vec<XdXrInfo>> {
     let count = read_u16(body, pos) as usize;
     pos += 2;
 
-    let mut result = Vec::with_capacity(count);
+    let mut result = Vec::with_capacity(count.min(body.len() / 4).max(1));
 
     for _ in 0..count {
         // 7(skip) + 1(skip) + 4(datetime) + 1(category) + 16(data) = 29 bytes per record

@@ -1,4 +1,5 @@
 use crate::error::{Result, TdxError};
+use crate::logw;
 
 const HEADER_SIZE: usize = 20; // 2+4+2+12 = 20 bytes for <hI1H3L>
 const INDEX_ITEM_SIZE: usize = 11; // 6 code + 1 sep + 4 offset
@@ -47,6 +48,9 @@ pub fn parse_financial(data: &[u8]) -> Result<Vec<FinancialRecord>> {
     for idx in 0..max_count {
         let index_offset = HEADER_SIZE + idx * INDEX_ITEM_SIZE;
         if index_offset + INDEX_ITEM_SIZE > data.len() {
+            if idx + 1 < max_count {
+                logw!("reader", "financial 索引截断: 期望 {} 条仅解析 {} 条（文件损坏）", max_count, idx);
+            }
             break;
         }
 

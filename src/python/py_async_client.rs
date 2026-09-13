@@ -110,14 +110,19 @@ impl PyAsyncTdxHqClient {
     }
 
     /// 设置交易阶段限流 (15/30/60 req/s)
-    fn set_phase(&mut self, phase: &str) {
+    fn set_phase(&mut self, phase: &str) -> PyResult<()> {
         let p = match phase {
             "trading" => TradingPhase::Trading,
-            "prepost" => TradingPhase::PrePost,
+            "prepost" | "pre_post" => TradingPhase::PrePost,
             "closed" => TradingPhase::Closed,
-            _ => return,
+            _ => {
+                return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                    "unknown phase {:?}: expect trading/pre_post/closed", phase
+                )))
+            }
         };
         self.client.set_phase(p);
+        Ok(())
     }
 
     /// 自动检测交易阶段并设置限流，返回阶段名称
@@ -125,7 +130,7 @@ impl PyAsyncTdxHqClient {
         let phase = self.client.auto_detect_phase();
         match phase {
             TradingPhase::Trading => "trading".to_string(),
-            TradingPhase::PrePost => "prepost".to_string(),
+            TradingPhase::PrePost => "pre_post".to_string(),
             TradingPhase::Closed => "closed".to_string(),
         }
     }
