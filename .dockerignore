@@ -36,8 +36,9 @@ docs/del/
 docs/WORK_LOG_*.md
 
 # Tests, examples, tools — not needed for wheel
+# 注意: benches/ 不能排除 —— Cargo.toml 显式声明 [[bench]] reader_bench，
+# cargo 解析 manifest 需要文件在构建上下文中存在，缺席则整个构建报错
 tests/
-benches/
 examples/
 tools/
 
