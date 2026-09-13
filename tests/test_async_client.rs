@@ -7,7 +7,7 @@
 
 #![cfg(feature = "integration")]
 
-use tdxrs::net::async_client::AsyncTdxHqClient;
+use tdxrs::net::async_client::{AsyncTdxHqClient, DEFAULT_POOL_SIZE};
 use tdxrs::net::utils::TradingPhase;
 use tdxrs::protocol::constants::DEFAULT_SERVERS;
 
@@ -28,7 +28,9 @@ async fn test_connect_and_disconnect() {
     let result = client.connect(ip, port, Some(5.0)).await;
     assert!(result.is_ok());
     assert!(result.unwrap());
-    assert_eq!(client.connection_count().await, 4);
+    // 断言引用 async 侧自己的 DEFAULT_POOL_SIZE(=4，与同步侧 5 同名不同值)：
+    // 此前两边各硬编码 4/5，谁改池大小都会静默腐烂 (CODE_REVIEW C2)
+    assert_eq!(client.connection_count().await, DEFAULT_POOL_SIZE);
 
     client.disconnect().await;
     assert_eq!(client.connection_count().await, 0);
@@ -149,10 +151,16 @@ async fn test_get_minute_time_data() {
     let client = AsyncTdxHqClient::new();
     client.connect(ip, port, Some(5.0)).await.unwrap();
 
-    let data = client.get_minute_time_data(1, "600519").await;
+    // 当日分时在非交易时段/休市日按设计返回空列表 (README 差异表)，
+    // 不能作为非空断言的依据 —— 周末跑必挂。改用指定交易日的历史分时:
+    // 2026-09-11 (周五) 为确定性的交易日
+    let data = client
+        .get_history_minute_time_data(1, "600519", 20260911)
+        .await;
     assert!(data.is_ok());
     let data = data.unwrap();
-    assert!(!data.is_empty());
+    assert!(!data.is_empty(), "历史分时在交易日应有数据");
+    assert!(data[0].price > 0.0);
 
     client.disconnect().await;
 }

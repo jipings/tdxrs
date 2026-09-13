@@ -18,7 +18,7 @@
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
-use std::sync::{Arc};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use tokio::sync::{mpsc, oneshot, Mutex};
@@ -62,7 +62,8 @@ impl ConnectionTask {
         .map_err(|_| crate::error_codes::ErrorCode::CONNECTION_TIMEOUT.err(&addr))?
         .map_err(|e| TdxError::Connection(format!("connect {}: {}", addr, e)))?;
 
-        stream.set_nodelay(true)
+        stream
+            .set_nodelay(true)
             .map_err(|e| TdxError::Connection(format!("set_nodelay: {}", e)))?;
 
         let mut task = Self { stream };
@@ -102,7 +103,9 @@ impl ConnectionTask {
 
     async fn send(&mut self, data: &[u8]) -> Result<()> {
         use tokio::io::AsyncWriteExt;
-        self.stream.write_all(data).await
+        self.stream
+            .write_all(data)
+            .await
             .map_err(|e| TdxError::Connection(format!("send: {}", e)))
     }
 
@@ -113,13 +116,11 @@ impl ConnectionTask {
         while total < len {
             // 读超时：此前直接 read().await，服务器僵死则请求永久挂起并
             // 堵死整条连接 (CODE_REVIEW P1-3)。行情响应毫秒级，30s 极宽松。
-            let n = tokio::time::timeout(
-                Duration::from_secs(30),
-                self.stream.read(&mut buf[total..]),
-            )
-            .await
-            .map_err(|_| TdxError::Connection("recv timeout (30s)".into()))?
-            .map_err(|e| TdxError::Connection(format!("recv: {}", e)))?;
+            let n =
+                tokio::time::timeout(Duration::from_secs(30), self.stream.read(&mut buf[total..]))
+                    .await
+                    .map_err(|_| TdxError::Connection("recv timeout (30s)".into()))?
+                    .map_err(|e| TdxError::Connection(format!("recv: {}", e)))?;
             if n == 0 {
                 return Err(TdxError::Disconnected);
             }
@@ -205,8 +206,12 @@ struct CacheEntry<T> {
 // 异步 TDX 行情客户端
 // ================================================================
 
-/// 默认连接池大小
-const DEFAULT_POOL_SIZE: usize = 4;
+/// 默认连接池大小 (async 专用, 4 连接轮转)
+///
+/// 注意与 `protocol::constants::DEFAULT_POOL_SIZE`(=5, 同步客户端池上限)
+/// 同名不同值——async 文档中的"4 连接池"即本常量。pub 是为了集成测试
+/// 断言引用常量而非硬编码数字，避免再次静默腐烂 (CODE_REVIEW C2)
+pub const DEFAULT_POOL_SIZE: usize = 4;
 
 /// 异步 TDX 行情客户端
 ///
@@ -355,9 +360,9 @@ impl AsyncTdxHqClient {
             TradingPhase::PrePost => 2.0,
             TradingPhase::Closed => 4.0,
         };
-        self.rate_limiter.set_rps(((self.base_rps as f64) * mult) as u32);
+        self.rate_limiter
+            .set_rps(((self.base_rps as f64) * mult) as u32);
     }
-
 
     /// 自动检测交易阶段并设置限流
     pub fn auto_detect_phase(&mut self) -> TradingPhase {
@@ -387,9 +392,8 @@ impl AsyncTdxHqClient {
         let (tx_stop, mut rx_stop) = oneshot::channel::<()>();
 
         tokio::spawn(async move {
-            let interval = Duration::from_secs_f64(
-                crate::protocol::constants::DEFAULT_HEARTBEAT_INTERVAL,
-            );
+            let interval =
+                Duration::from_secs_f64(crate::protocol::constants::DEFAULT_HEARTBEAT_INTERVAL);
             let mut tick: usize = 0;
             loop {
                 tokio::select! {
@@ -433,7 +437,10 @@ impl AsyncTdxHqClient {
                                 false
                             } else {
                                 // 等待响应 (带超时) —— 已放锁
-                                matches!(tokio::time::timeout(Duration::from_secs(5), reply_rx).await, Ok(Ok(Ok(_))))
+                                matches!(
+                                    tokio::time::timeout(Duration::from_secs(5), reply_rx).await,
+                                    Ok(Ok(Ok(_)))
+                                )
                             }
                         }
                     }
@@ -536,16 +543,15 @@ impl AsyncTdxHqClient {
                     data: packet.to_vec(),
                     reply: tx_reply2,
                 };
-                tx_next.try_send(req2)
+                tx_next
+                    .try_send(req2)
                     .map_err(|_| TdxError::Connection("all connections busy".into()))?;
-                return rx_reply2.await
-                    .map_err(|_| TdxError::Disconnected)?;
+                return rx_reply2.await.map_err(|_| TdxError::Disconnected)?;
             }
             return Err(TdxError::Connection("connection busy".into()));
         }
 
-        rx_reply.await
-            .map_err(|_| TdxError::Disconnected)?
+        rx_reply.await.map_err(|_| TdxError::Disconnected)?
     }
 
     // ================================================================
@@ -570,10 +576,11 @@ impl AsyncTdxHqClient {
             .map(|x| x.year * 10000 + x.month * 100 + x.day)
             .min();
 
-        let Some(ee_date) = earliest_event else { return Vec::new() };
+        let Some(ee_date) = earliest_event else {
+            return Vec::new();
+        };
 
-        let first_bar_date =
-            bars[0].year * 10000 + bars[0].month * 100 + bars[0].day;
+        let first_bar_date = bars[0].year * 10000 + bars[0].month * 100 + bars[0].day;
 
         if first_bar_date <= ee_date {
             return Vec::new();
@@ -586,7 +593,12 @@ impl AsyncTdxHqClient {
 
         for _page in 0..max_pages {
             let pkt = utils::build_security_bars_packet(
-                category, market, code, offset, MAX_KLINE_COUNT, 0,
+                category,
+                market,
+                code,
+                offset,
+                MAX_KLINE_COUNT,
+                0,
             );
             let body = match self.send_and_recv(&pkt).await {
                 Ok(b) => b,
@@ -765,11 +777,7 @@ impl AsyncTdxHqClient {
     }
 
     /// 获取证券列表
-    pub async fn get_security_list(
-        &self,
-        market: u8,
-        start: u16,
-    ) -> Result<Vec<SecurityInfo>> {
+    pub async fn get_security_list(&self, market: u8, start: u16) -> Result<Vec<SecurityInfo>> {
         if start == 0 {
             let cache = self.list_cache.lock().await;
             if let Some(entry) = cache.get(&market) {
@@ -919,8 +927,7 @@ impl AsyncTdxHqClient {
         let code_buf = utils::code_bytes(code);
         let mut packet = Vec::with_capacity(21);
         packet.extend_from_slice(&[
-            0x0c, 0x1f, 0x18, 0x76, 0x00, 0x01, 0x0b, 0x00, 0x0b, 0x00, 0x10, 0x00, 0x01,
-            0x00,
+            0x0c, 0x1f, 0x18, 0x76, 0x00, 0x01, 0x0b, 0x00, 0x0b, 0x00, 0x10, 0x00, 0x01, 0x00,
         ]);
         packet.push(market);
         packet.extend_from_slice(&code_buf);
@@ -934,8 +941,7 @@ impl AsyncTdxHqClient {
         let code_buf = utils::code_bytes(code);
         let mut packet = Vec::with_capacity(21);
         packet.extend_from_slice(&[
-            0x0c, 0x1f, 0x18, 0x76, 0x00, 0x01, 0x0b, 0x00, 0x0b, 0x00, 0x0f, 0x00, 0x01,
-            0x00,
+            0x0c, 0x1f, 0x18, 0x76, 0x00, 0x01, 0x0b, 0x00, 0x0b, 0x00, 0x0f, 0x00, 0x01, 0x00,
         ]);
         packet.push(market);
         packet.extend_from_slice(&code_buf);
@@ -1118,7 +1124,11 @@ mod tests {
 
     /// 向 client 注入 mock 连接句柄
     async fn inject_mock(client: &AsyncTdxHqClient, tx: mpsc::Sender<Request>) {
-        client.connections.lock().await.push(ConnectionHandle { tx });
+        client
+            .connections
+            .lock()
+            .await
+            .push(ConnectionHandle { tx });
     }
 
     #[tokio::test]
@@ -1219,7 +1229,11 @@ mod tests {
         drop(rx); // 关闭接收端
 
         let client = AsyncTdxHqClient::new();
-        client.connections.lock().await.push(ConnectionHandle { tx });
+        client
+            .connections
+            .lock()
+            .await
+            .push(ConnectionHandle { tx });
 
         // 发送应失败 (通道已关闭)
         let result = client.get_security_count(1).await;
@@ -1284,7 +1298,11 @@ mod tests {
         // 注入一个已关闭的通道
         let (tx, rx) = mpsc::channel::<Request>(16);
         drop(rx);
-        client.connections.lock().await.push(ConnectionHandle { tx });
+        client
+            .connections
+            .lock()
+            .await
+            .push(ConnectionHandle { tx });
 
         // 启动心跳 — 第一次心跳就会发现通道已关闭
         client.start_heartbeat().await;

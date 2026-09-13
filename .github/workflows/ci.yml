@@ -7,14 +7,36 @@ on:
     branches: [main]
 
 jobs:
-  test:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # 全量 cargo test = lib + 集成 + doctest。
+      # 此前只跑 --lib: doctest 曾 7 个编译失败零防护、集成测试
+      # 静默腐烂 (CODE_REVIEW C1)。网络依赖的集成测试由
+      # `integration` feature 门控，默认跳过，无网也能全绿。
+      - name: Run Rust tests (lib + integration + doc)
+        run: cargo test --quiet
+      # f10 不在 default（合规口径，不随 pip 包发布），单独编译测试防其腐烂
+      - name: Run Rust tests with f10 feature
+        run: cargo test --features f10 --quiet
+      - name: Clippy (deny warnings)
+        run: cargo clippy --all-targets -- -D warnings
+
+  smoke:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Run Rust tests
-        run: cargo test --lib
-      - name: Check compilation
-        run: cargo check
+      - name: Install maturin / pytest / pandas
+        run: pip install maturin pytest pandas
+      # 从真实 wheel 安装并跑 CLI/Downloader 冒烟测试 ——
+      # 与发布产物同路径验证 (10 例，含网络用例，服务器不可达自动 skip)
+      - name: Build and install wheel
+        run: |
+          maturin build --release --out dist
+          pip install dist/*.whl
+      - name: Run CLI/Downloader smoke tests
+        run: pytest tests/test_smoke.py -v
