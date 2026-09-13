@@ -5,6 +5,10 @@ use crate::error::{Result, TdxError};
 
 pub struct TcpConnection {
     stream: TcpStream,
+    /// 收发一旦出错即标记失活：peer_addr() 对已连接 socket 几乎恒为 Ok
+    /// （对端 close、本端 shutdown 后仍成功），不能用作存活判定
+    /// (CODE_REVIEW P1-8)
+    healthy: std::cell::Cell<bool>,
 }
 
 impl TcpConnection {
@@ -39,11 +43,12 @@ impl TcpConnection {
         stream
             .set_write_timeout(Some(std::time::Duration::from_secs_f64(timeout_secs)))
             .map_err(|e| TdxError::Connection(format!("set_write_timeout: {}", e)))?;
-        Ok(Self { stream })
+        Ok(Self { stream, healthy: std::cell::Cell::new(true) })
     }
 
     pub fn send(&mut self, data: &[u8]) -> Result<()> {
         self.stream.write_all(data).map_err(|e| {
+            self.healthy.set(false);
             TdxError::Connection(format!("send failed: {}", e))
         })?;
         Ok(())
@@ -55,9 +60,11 @@ impl TcpConnection {
         let mut total = 0;
         while total < len {
             let n = self.stream.read(&mut buf[total..]).map_err(|e| {
+                self.healthy.set(false);
                 TdxError::Connection(format!("recv failed: {}", e))
             })?;
             if n == 0 {
+                self.healthy.set(false);
                 return Err(TdxError::Disconnected);
             }
             total += n;
@@ -70,6 +77,8 @@ impl TcpConnection {
     }
 
     pub fn is_open(&self) -> bool {
-        self.stream.peer_addr().is_ok()
+        // peer_addr() 对死 socket 也几乎恒 Ok，不可用作存活判定 (P1-8)；
+        // 改为"未发生过收发错误 && socket 无错误挂起"
+        self.healthy.get() && matches!(self.stream.take_error(), Ok(None))
     }
 }

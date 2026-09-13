@@ -84,6 +84,19 @@ impl ConnectionPool {
     pub fn borrow(&self, server: &(String, u16)) -> Result<PooledConnGuard<'_>> {
         let mut inner = self.inner.lock().unwrap();
 
+        // 按目标服务器过滤空闲队列：切服后在途归还的旧服务器连接
+        // 不得被复用，直接关闭出池 (CODE_REVIEW P1-8)
+        let mut matching = VecDeque::new();
+        while let Some(mut c) = inner.idle.pop_front() {
+            if c.server == *server {
+                matching.push_back(c);
+            } else {
+                c.conn.close();
+                inner.total = inner.total.saturating_sub(1);
+            }
+        }
+        inner.idle = matching;
+
         // 尝试从空闲队列获取
         if let Some(conn) = inner.idle.pop_front() {
             inner.active += 1;
@@ -147,6 +160,18 @@ impl ConnectionPool {
     /// 尝试借出连接 (非阻塞)
     pub fn try_borrow(&self, server: &(String, u16)) -> Result<Option<PooledConnGuard<'_>>> {
         let mut inner = self.inner.lock().unwrap();
+
+        // 同 borrow: 按目标服务器过滤 (CODE_REVIEW P1-8)
+        let mut matching = VecDeque::new();
+        while let Some(mut c) = inner.idle.pop_front() {
+            if c.server == *server {
+                matching.push_back(c);
+            } else {
+                c.conn.close();
+                inner.total = inner.total.saturating_sub(1);
+            }
+        }
+        inner.idle = matching;
 
         if let Some(conn) = inner.idle.pop_front() {
             inner.active += 1;
@@ -351,5 +376,30 @@ mod tests {
         drop(guard); // 归还 —— 修复前 active 0-1 panic（持锁毒化互斥锁）
         let stats = pool.stats();
         assert!(stats.active < usize::MAX, "active 不应下溢回绕");
+    }
+
+    // CODE_REVIEW P1-8: 空闲连接必须按目标服务器匹配
+    #[test]
+    fn test_borrow_skips_foreign_server_idle() {
+        use std::net::TcpListener;
+        let l1 = TcpListener::bind("127.0.0.1:0").unwrap();
+        let p1 = l1.local_addr().unwrap().port();
+        let l2 = TcpListener::bind("127.0.0.1:0").unwrap();
+        let p2 = l2.local_addr().unwrap().port();
+
+        let config = PoolConfig { max_size: 4, connect_timeout: 1.0, handshake_fn: None };
+        let pool = ConnectionPool::new_single(("127.0.0.1".into(), p1), config);
+
+        // 建连 A 并手动归还（借出后 drop 归还）
+        let g = pool.borrow(&("127.0.0.1".into(), p1)).expect("A 连接");
+        drop(g);
+        assert_eq!(pool.stats().idle, 1, "A 归还后应有 1 空闲");
+
+        // 为服务器 B borrow：不得复用 A 的空闲连接
+        let g2 = pool.borrow(&("127.0.0.1".into(), p2)).expect("B 新建连接");
+        drop(g2);
+        // A 的残留被清出，B 归还后 idle 只含 B
+        let s = pool.stats();
+        assert!(s.total <= 2, "异源连接被关闭出池: {:?}", s);
     }
 }
