@@ -24,6 +24,13 @@ pub fn get_price(data: &[u8], pos: usize) -> (i64, usize) {
             if pos >= data.len() {
                 return (0, data.len());
             }
+            // 移位序列 6,13,...,62,69：第 10 个续字节起 >= 64，
+            // overflow-checks 构建直接 panic，release 下按 69&63=5 掩码
+            // 静默产生错值。恶意服务器发一串 0xFF 即触发。与既有越界
+            // 截断语义一致地返回 (CODE_REVIEW P1-6)
+            if shift >= 64 {
+                return (0, data.len());
+            }
             let b = data[pos];
             result |= ((b & 0x7F) as i64) << shift;
             shift += 7;
@@ -90,6 +97,21 @@ pub fn get_volume(vol: i64) -> f64 {
 mod tests {
     use super::*;
 
+
+    // CODE_REVIEW P1-6: 10+ 个续字节的恶意流不 panic、不错位
+    #[test]
+    fn test_get_price_shift_overflow_guard() {
+        let evil = [0xFFu8; 20];
+        let (v, pos) = get_price(&evil, 0);
+        assert_eq!(v, 0, "超长 varint 应按截断语义返回 0");
+        assert_eq!(pos, evil.len());
+
+        // 正常编码不受影响
+        assert_eq!(get_price(&[0x05], 0), (5, 1));
+        let (v2, p2) = get_price(&[0x81, 0x02], 0);
+        assert_eq!(v2, 1 + (2 << 6));
+        assert_eq!(p2, 2);
+    }
     #[test]
     fn test_get_price_simple() {
         // 单字节正数: 0b0000_0010 = 2
