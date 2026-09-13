@@ -381,24 +381,35 @@ impl AsyncTdxHqClient {
                 packet.extend_from_slice(&[0x75, 0xc7, 0x33, 0x01]);
 
                 // 轮转选择一个连接发送心跳
+                // 锁内只取发送端并立即放锁：此前守卫跨 5s 超时 await 存活，
+                // 服务器无响应时所有请求与 connect/disconnect 全局冻结 5s
+                // (CODE_REVIEW P1-2)
                 let alive = {
-                    let conns_guard = conns.lock().await;
-                    if conns_guard.is_empty() {
-                        false
-                    } else {
-                        let idx = tick % conns_guard.len();
-                        tick = tick.wrapping_add(1);
-                        // 使用 try_send 避免阻塞 (通道满 = 连接忙 = 跳过)
-                        let (reply_tx, reply_rx) = oneshot::channel();
-                        let req = Request {
-                            data: packet,
-                            reply: reply_tx,
-                        };
-                        if conns_guard[idx].tx.try_send(req).is_err() {
-                            false
+                    let tx_opt = {
+                        let conns_guard = conns.lock().await;
+                        if conns_guard.is_empty() {
+                            None
                         } else {
-                            // 等待响应 (带超时)
-                            matches!(tokio::time::timeout(Duration::from_secs(5), reply_rx).await, Ok(Ok(Ok(_))))
+                            let idx = tick % conns_guard.len();
+                            tick = tick.wrapping_add(1);
+                            Some(conns_guard[idx].tx.clone())
+                        }
+                    };
+                    match tx_opt {
+                        None => false,
+                        Some(tx) => {
+                            // 使用 try_send 避免阻塞 (通道满 = 连接忙 = 跳过)
+                            let (reply_tx, reply_rx) = oneshot::channel();
+                            let req = Request {
+                                data: packet,
+                                reply: reply_tx,
+                            };
+                            if tx.try_send(req).is_err() {
+                                false
+                            } else {
+                                // 等待响应 (带超时) —— 已放锁
+                                matches!(tokio::time::timeout(Duration::from_secs(5), reply_rx).await, Ok(Ok(Ok(_))))
+                            }
                         }
                     }
                 };
