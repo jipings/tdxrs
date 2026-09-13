@@ -120,7 +120,7 @@ impl TdxHqClient {
         // 注意: 必须先 clone 取走值并释放锁守卫再连接 —— connect_internal 内部
         // 会再次写 last_server，非重入 Mutex 持锁调用将永久自死锁（CODE_REVIEW P0-1）
         {
-            let last = self.last_server.lock().unwrap().clone();
+            let last = self.last_server.lock().unwrap_or_else(|e| e.into_inner()).clone();
             if let Some((ref ip, port)) = last {
                 if !self.is_server_blocked(ip, port) {
                     if let Ok(true) = self.connect_internal(ip, port, timeout, false) { return Ok(true) }
@@ -130,7 +130,7 @@ impl TdxHqClient {
 
         // 1) 用户自定义列表
         {
-            let list = self.server_list.lock().unwrap();
+            let list = self.server_list.lock().unwrap_or_else(|e| e.into_inner());
             for (_, ip, port) in list.iter() {
                 if self.is_server_blocked(ip, *port) {
                     continue;
@@ -176,7 +176,7 @@ impl TdxHqClient {
 
     /// 设置自定义优先服务器列表 (替换默认 PRIMARY_SERVERS)
     pub fn set_servers(&self, servers: &[(&str, &str, u16)]) {
-        let mut list = self.server_list.lock().unwrap();
+        let mut list = self.server_list.lock().unwrap_or_else(|e| e.into_inner());
         list.clear();
         for &(name, ip, port) in servers {
             list.push((name.to_string(), ip.to_string(), port));
@@ -185,7 +185,7 @@ impl TdxHqClient {
 
     /// 在优先列表头部添加一台服务器
     pub fn add_server(&self, name: &str, ip: &str, port: u16) {
-        let mut list = self.server_list.lock().unwrap();
+        let mut list = self.server_list.lock().unwrap_or_else(|e| e.into_inner());
         list.insert(0, (name.to_string(), ip.to_string(), port));
     }
 
@@ -193,7 +193,7 @@ impl TdxHqClient {
     ///
     /// `sorted`: 由 probe_servers() 返回的排序结果, 取前N台
     pub fn reorder_servers(&self, sorted: &[(&str, &str, u16)]) {
-        let mut list = self.server_list.lock().unwrap();
+        let mut list = self.server_list.lock().unwrap_or_else(|e| e.into_inner());
         list.clear();
         for &(name, ip, port) in sorted {
             list.push((name.to_string(), ip.to_string(), port));
@@ -217,7 +217,7 @@ impl TdxHqClient {
     /// client.connect_to_any(None)?;  // 自动跳过黑名单服务器
     /// ```
     pub fn block_server(&self, ip: &str, port: u16) {
-        let mut blocked = self.blocked_servers.lock().unwrap();
+        let mut blocked = self.blocked_servers.lock().unwrap_or_else(|e| e.into_inner());
         if !blocked.iter().any(|(i, p)| i == ip && *p == port) {
             blocked.push((ip.to_string(), port));
             logi!("hq", "server {}:{} added to blacklist", ip, port);
@@ -226,25 +226,25 @@ impl TdxHqClient {
 
     /// 从黑名单移除服务器
     pub fn unblock_server(&self, ip: &str, port: u16) {
-        let mut blocked = self.blocked_servers.lock().unwrap();
+        let mut blocked = self.blocked_servers.lock().unwrap_or_else(|e| e.into_inner());
         blocked.retain(|(i, p)| i != ip || *p != port);
         logi!("hq", "server {}:{} removed from blacklist", ip, port);
     }
 
     /// 获取黑名单列表
     pub fn blocked_servers(&self) -> Vec<(String, u16)> {
-        self.blocked_servers.lock().unwrap().clone()
+        self.blocked_servers.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
     /// 清空黑名单
     pub fn clear_blocked_servers(&self) {
-        self.blocked_servers.lock().unwrap().clear();
+        self.blocked_servers.lock().unwrap_or_else(|e| e.into_inner()).clear();
         logi!("hq", "server blacklist cleared");
     }
 
     /// 检查服务器是否在黑名单中
     fn is_server_blocked(&self, ip: &str, port: u16) -> bool {
-        let blocked = self.blocked_servers.lock().unwrap();
+        let blocked = self.blocked_servers.lock().unwrap_or_else(|e| e.into_inner());
         blocked.iter().any(|(i, p)| i == ip && *p == port)
     }
 
@@ -327,7 +327,7 @@ impl TdxHqClient {
         timeout: Option<f64>,
         start_heartbeat: bool,
     ) -> Result<bool> {
-        let timeout_secs = timeout.unwrap_or(*self.connect_timeout.lock().unwrap());
+        let timeout_secs = timeout.unwrap_or(*self.connect_timeout.lock().unwrap_or_else(|e| e.into_inner()));
 
         // 建立连接并执行握手
         let mut tcp = TcpConnection::connect(ip, port, timeout_secs)?;
@@ -336,17 +336,17 @@ impl TdxHqClient {
         // 握手成功，复用现有连接池 (保持心跳线程引用有效)
         let server = (ip.to_string(), port);
         {
-            let pool_guard = self.pool.lock().unwrap();
+            let pool_guard = self.pool.lock().unwrap_or_else(|e| e.into_inner());
             pool_guard.close_all();  // 关闭旧连接
             pool_guard.push(tcp, server.clone());  // 放入新连接
         }
 
         self.connected.store(true, Ordering::SeqCst);
-        *self.last_server.lock().unwrap() = Some(server);
+        *self.last_server.lock().unwrap_or_else(|e| e.into_inner()) = Some(server);
 
         // 清除缓存
-        self.count_cache.lock().unwrap().clear();
-        self.list_cache.lock().unwrap().clear();
+        self.count_cache.lock().unwrap_or_else(|e| e.into_inner()).clear();
+        self.list_cache.lock().unwrap_or_else(|e| e.into_inner()).clear();
 
         if start_heartbeat {
             self.start_heartbeat();
@@ -358,7 +358,7 @@ impl TdxHqClient {
     /// 断开连接
     pub fn disconnect(&self) {
         self.stop_heartbeat();
-        self.pool.lock().unwrap().close_all();
+        self.pool.lock().unwrap_or_else(|e| e.into_inner()).close_all();
         self.connected.store(false, Ordering::SeqCst);
         logi!("hq", "disconnected");
     }
@@ -375,17 +375,17 @@ impl TdxHqClient {
 
     /// 设置缓存 TTL (秒)
     pub fn set_cache_ttl(&self, ttl_secs: u64) {
-        *self.cache_ttl.lock().unwrap() = Duration::from_secs(ttl_secs);
+        *self.cache_ttl.lock().unwrap_or_else(|e| e.into_inner()) = Duration::from_secs(ttl_secs);
     }
 
     /// 设置连接超时 (秒)
     pub fn set_connect_timeout(&self, timeout: f64) {
-        *self.connect_timeout.lock().unwrap() = timeout;
+        *self.connect_timeout.lock().unwrap_or_else(|e| e.into_inner()) = timeout;
     }
 
     /// 获取连接池状态
     pub fn pool_stats(&self) -> PoolStats {
-        self.pool.lock().unwrap().stats()
+        self.pool.lock().unwrap_or_else(|e| e.into_inner()).stats()
     }
 
     /// 设置默认请求速率限制 (每秒请求数, 0=禁用)
@@ -414,12 +414,12 @@ impl TdxHqClient {
     fn start_heartbeat(&self) {
         self.stop_heartbeat();
         let stop = Arc::new(AtomicBool::new(false));
-        let pool = Arc::clone(&self.pool.lock().unwrap());
+        let pool = Arc::clone(&self.pool.lock().unwrap_or_else(|e| e.into_inner()));
         let connected = Arc::clone(&self.connected);
         let stop_clone = stop.clone();
         let last_server = Arc::clone(&self.last_server);
         let interval = Duration::from_secs_f64(DEFAULT_HEARTBEAT_INTERVAL);
-        let connect_timeout = *self.connect_timeout.lock().unwrap();
+        let connect_timeout = *self.connect_timeout.lock().unwrap_or_else(|e| e.into_inner());
 
         let handle = std::thread::spawn(move || {
             while !stop_clone.load(Ordering::Relaxed) {
@@ -436,7 +436,7 @@ impl TdxHqClient {
                 }
 
                 // 尝试从池中借出连接做心跳
-                let current_server = last_server.lock().unwrap().clone()
+                let current_server = last_server.lock().unwrap_or_else(|e| e.into_inner()).clone()
                     .unwrap_or_else(|| (PRIMARY_SERVERS[0].1.to_string(), PRIMARY_SERVERS[0].2));
                 if let Ok(Some(mut guard)) = pool.try_borrow(&current_server) {
                     let alive = (|| -> bool {
@@ -491,7 +491,7 @@ impl TdxHqClient {
                                     if utils::perform_handshake(&mut tcp).is_ok() {
                                         let new_server = (ip.to_string(), port);
                                         pool.push(tcp, new_server.clone());
-                                        *last_server.lock().unwrap() = Some(new_server);
+                                        *last_server.lock().unwrap_or_else(|e| e.into_inner()) = Some(new_server);
                                         connected.store(true, Ordering::SeqCst);
                                         logi!("hq", "heartbeat reconnect to {} ({})", name, ip);
                                         reconnected = true;
@@ -509,16 +509,16 @@ impl TdxHqClient {
             }
         });
 
-        *self.heartbeat_stop.lock().unwrap() = Some(stop);
-        *self.heartbeat_handle.lock().unwrap() = Some(handle);
+        *self.heartbeat_stop.lock().unwrap_or_else(|e| e.into_inner()) = Some(stop);
+        *self.heartbeat_handle.lock().unwrap_or_else(|e| e.into_inner()) = Some(handle);
         self.connected.store(true, Ordering::SeqCst);
     }
 
     fn stop_heartbeat(&self) {
-        if let Some(stop) = self.heartbeat_stop.lock().unwrap().take() {
+        if let Some(stop) = self.heartbeat_stop.lock().unwrap_or_else(|e| e.into_inner()).take() {
             stop.store(true, Ordering::SeqCst);
         }
-        if let Some(h) = self.heartbeat_handle.lock().unwrap().take() {
+        if let Some(h) = self.heartbeat_handle.lock().unwrap_or_else(|e| e.into_inner()).take() {
             let _ = h.join();
         }
     }
@@ -570,9 +570,9 @@ impl TdxHqClient {
 
     /// 从连接池借出连接并执行请求
     fn try_send_and_recv(&self, packet: &[u8]) -> Result<Vec<u8>> {
-        let server = self.last_server.lock().unwrap().clone()
+        let server = self.last_server.lock().unwrap_or_else(|e| e.into_inner()).clone()
             .unwrap_or_else(|| (PRIMARY_SERVERS[0].1.to_string(), PRIMARY_SERVERS[0].2));
-        let pool = self.pool.lock().unwrap();
+        let pool = self.pool.lock().unwrap_or_else(|e| e.into_inner());
         let mut guard = pool.borrow(&server)?;
 
         let conn = guard.conn();
@@ -641,7 +641,7 @@ impl TdxHqClient {
 
         logw!("hq", "connection lost, attempting reconnect...");
 
-        let last = self.last_server.lock().unwrap().clone();
+        let last = self.last_server.lock().unwrap_or_else(|e| e.into_inner()).clone();
 
         // 1) 先试上次服务器 (可能临时故障已恢复)
         if let Some((ref ip, port)) = last {
@@ -655,7 +655,7 @@ impl TdxHqClient {
 
         // 用户自定义列表
         {
-            let list = self.server_list.lock().unwrap();
+            let list = self.server_list.lock().unwrap_or_else(|e| e.into_inner());
             for (_, ip, port) in list.iter() {
                 if Some((ip.as_str(), *port)) == skip { continue; }
                 if self.connect_internal(ip, *port, Some(CONNECT_TIMEOUT), false).is_ok() {
@@ -762,7 +762,7 @@ impl TdxHqClient {
     ///
     /// 遍历 PRIMARY_SERVERS，跳过当前服务器和黑名单，连接到第一台可用的。
     fn reconnect_to_another_server(&self) {
-        let current = self.last_server.lock().unwrap().clone();
+        let current = self.last_server.lock().unwrap_or_else(|e| e.into_inner()).clone();
 
         for &(_, ip, port) in PRIMARY_SERVERS {
             // 跳过当前服务器
@@ -1083,7 +1083,7 @@ impl TdxHqClient {
     /// 获取证券列表 (带缓存)
     pub fn get_security_list(&self, market: u8, start: u16) -> Result<Vec<SecurityInfo>> {
         if start == 0 {
-            let cache = self.list_cache.lock().unwrap();
+            let cache = self.list_cache.lock().unwrap_or_else(|e| e.into_inner());
             if let Some(entry) = cache.get(&market) {
                 if Instant::now() < entry.expires_at {
                     return Ok(entry.data.clone());
@@ -1101,8 +1101,8 @@ impl TdxHqClient {
             let body = self.send_and_recv(&packet)?;
             let result = parse_security_list(&body)?;
 
-            let mut cache = self.list_cache.lock().unwrap();
-            let ttl = *self.cache_ttl.lock().unwrap();
+            let mut cache = self.list_cache.lock().unwrap_or_else(|e| e.into_inner());
+            let ttl = *self.cache_ttl.lock().unwrap_or_else(|e| e.into_inner());
             cache.insert(
                 market,
                 CacheEntry {
@@ -1126,7 +1126,7 @@ impl TdxHqClient {
 
     /// 获取证券数量 (带缓存)
     pub fn get_security_count(&self, market: u8) -> Result<u16> {
-        let cache = self.count_cache.lock().unwrap();
+        let cache = self.count_cache.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(entry) = cache.get(&market) {
             if Instant::now() < entry.expires_at {
                 return Ok(entry.data);
@@ -1144,8 +1144,8 @@ impl TdxHqClient {
         let body = self.send_and_recv(&packet)?;
         let count = parse_security_count(&body)?;
 
-        let mut cache = self.count_cache.lock().unwrap();
-        let ttl = *self.cache_ttl.lock().unwrap();
+        let mut cache = self.count_cache.lock().unwrap_or_else(|e| e.into_inner());
+        let ttl = *self.cache_ttl.lock().unwrap_or_else(|e| e.into_inner());
         cache.insert(
             market,
             CacheEntry {

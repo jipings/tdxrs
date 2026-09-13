@@ -191,7 +191,7 @@ impl RateLimiter {
         if !self.enabled.load(Ordering::Relaxed) {
             return;
         }
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(last) = inner.last_request {
             let elapsed = last.elapsed();
             if elapsed < inner.min_interval {
@@ -203,7 +203,7 @@ impl RateLimiter {
 
     /// 设置每秒请求数 (0 = 禁用, 超过 200 自动降为 200)
     pub fn set_rps(&self, rps: u32) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         if rps == 0 {
             self.enabled.store(false, Ordering::Relaxed);
         } else {
@@ -227,7 +227,7 @@ impl RateLimiter {
     /// - `PrePost`: 基准限流 / 2
     /// - `Closed`:  基准限流 / 4
     pub fn set_phase(&self, phase: TradingPhase) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let mult = PHASE_MULTIPLIER[phase as usize].0;
         let adjusted_ms = (inner.base_interval.as_millis() as f64 / mult) as u64;
         inner.min_interval = Duration::from_millis(adjusted_ms.max(1));
@@ -236,7 +236,7 @@ impl RateLimiter {
 
     /// 获取当前阶段
     pub fn phase(&self) -> TradingPhase {
-        self.inner.lock().unwrap().phase
+        self.inner.lock().unwrap_or_else(|e| e.into_inner()).phase
     }
 
     /// 自动检测并设置交易阶段
@@ -651,7 +651,7 @@ mod tests {
     fn test_rate_limiter_cap_at_200() {
         let limiter = RateLimiter::new(5); // 200 req/s
         limiter.set_rps(500); // 超过上限
-        let inner = limiter.inner.lock().unwrap();
+        let inner = limiter.inner.lock().unwrap_or_else(|e| e.into_inner());
         assert_eq!(inner.base_interval, Duration::from_millis(5));
     }
 
@@ -659,7 +659,7 @@ mod tests {
     fn test_rate_limiter_set_200_exact() {
         let limiter = RateLimiter::new(5);
         limiter.set_rps(200);
-        let inner = limiter.inner.lock().unwrap();
+        let inner = limiter.inner.lock().unwrap_or_else(|e| e.into_inner());
         assert_eq!(inner.base_interval, Duration::from_millis(5));
     }
 
@@ -667,7 +667,7 @@ mod tests {
     fn test_rate_limiter_set_below_cap() {
         let limiter = RateLimiter::new(5);
         limiter.set_rps(10);
-        let inner = limiter.inner.lock().unwrap();
+        let inner = limiter.inner.lock().unwrap_or_else(|e| e.into_inner());
         assert_eq!(inner.base_interval, Duration::from_millis(100));
     }
 
@@ -693,7 +693,7 @@ mod tests {
         // base 100ms (10 req/s), Trading: ×1.0 → 100ms
         let limiter = RateLimiter::new(100);
         limiter.set_phase(TradingPhase::Trading);
-        let inner = limiter.inner.lock().unwrap();
+        let inner = limiter.inner.lock().unwrap_or_else(|e| e.into_inner());
         assert_eq!(inner.min_interval, Duration::from_millis(100));
     }
 
@@ -702,7 +702,7 @@ mod tests {
         // base 100ms (10 req/s), PrePost: /2 → 50ms (20 req/s)
         let limiter = RateLimiter::new(100);
         limiter.set_phase(TradingPhase::PrePost);
-        let inner = limiter.inner.lock().unwrap();
+        let inner = limiter.inner.lock().unwrap_or_else(|e| e.into_inner());
         assert_eq!(inner.min_interval, Duration::from_millis(50));
     }
 
@@ -711,7 +711,7 @@ mod tests {
         // base 100ms (10 req/s), Closed: /4 → 25ms (40 req/s)
         let limiter = RateLimiter::new(100);
         limiter.set_phase(TradingPhase::Closed);
-        let inner = limiter.inner.lock().unwrap();
+        let inner = limiter.inner.lock().unwrap_or_else(|e| e.into_inner());
         assert_eq!(inner.min_interval, Duration::from_millis(25));
     }
 

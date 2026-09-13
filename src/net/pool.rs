@@ -71,7 +71,7 @@ impl ConnectionPool {
 
     /// 将一个已握手的连接放入池中
     pub fn push(&self, conn: TcpConnection, server: (String, u16)) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         inner.total += 1;
         inner.idle.push_back(PooledConnection { conn, server });
     }
@@ -82,7 +82,7 @@ impl ConnectionPool {
     /// 如果未达上限，创建新连接；
     /// 如果已满，返回错误。
     pub fn borrow(&self, server: &(String, u16)) -> Result<PooledConnGuard<'_>> {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
 
         // 按目标服务器过滤空闲队列：切服后在途归还的旧服务器连接
         // 不得被复用，直接关闭出池 (CODE_REVIEW P1-8)
@@ -143,7 +143,7 @@ impl ConnectionPool {
                 Err(e) => {
                     // 连接/握手失败必须回滚计数，否则失败 max_size 次后
                     // 池永久 POOL_EXHAUSTED 且泄漏无法清除 (CODE_REVIEW P0-3B)
-                    let mut inner = self.inner.lock().unwrap();
+                    let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
                     inner.total = inner.total.saturating_sub(1);
                     inner.active = inner.active.saturating_sub(1);
                     return Err(e);
@@ -159,7 +159,7 @@ impl ConnectionPool {
 
     /// 尝试借出连接 (非阻塞)
     pub fn try_borrow(&self, server: &(String, u16)) -> Result<Option<PooledConnGuard<'_>>> {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
 
         // 同 borrow: 按目标服务器过滤 (CODE_REVIEW P1-8)
         let mut matching = VecDeque::new();
@@ -214,7 +214,7 @@ impl ConnectionPool {
                 }
                 Err(e) => {
                     // 同 borrow: 失败回滚计数 (CODE_REVIEW P0-3B)
-                    let mut inner = self.inner.lock().unwrap();
+                    let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
                     inner.total = inner.total.saturating_sub(1);
                     inner.active = inner.active.saturating_sub(1);
                     return Err(e);
@@ -227,7 +227,7 @@ impl ConnectionPool {
 
     /// 归还连接到池中
     fn return_connection(&self, pooled: PooledConnection) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         // 饱和减：close_all 等路径可能已重置计数，普通 -= 在下溢时 panic
         // 且发生在持锁期间会毒化互斥锁 (CODE_REVIEW P0-3A)
         inner.active = inner.active.saturating_sub(1);
@@ -241,7 +241,7 @@ impl ConnectionPool {
 
     /// 关闭所有连接
     pub fn close_all(&self) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         while let Some(mut conn) = inner.idle.pop_front() {
             conn.conn.close();
             inner.total = inner.total.saturating_sub(1);
@@ -253,7 +253,7 @@ impl ConnectionPool {
 
     /// 获取池状态
     pub fn stats(&self) -> PoolStats {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         PoolStats {
             idle: inner.idle.len(),
             active: inner.active,
