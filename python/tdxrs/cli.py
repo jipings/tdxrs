@@ -88,6 +88,22 @@ def check_limit(key, value):
     return value
 
 
+def _parse_servers(spec):
+    """解析 --servers "ip:port,ip:port" 为 ServerPool 需要的 (name, ip, port:int) 三元组"""
+    if not spec:
+        return None
+    out = []
+    for i, s in enumerate(x.strip() for x in spec.split(",")):
+        if ":" not in s:
+            continue
+        ip, port = s.rsplit(":", 1)
+        try:
+            out.append(("srv%d" % i, ip, int(port)))
+        except ValueError:
+            print(f"[WARN] 无效服务器项 '{s}'（期望 ip:port），跳过", file=sys.stderr)
+    return out or None
+
+
 def auto_market(code):
     """根据代码自动判断市场（4/8 开头为北交所，返回 None 由调用方处理）"""
     if code.startswith(("6", "5", "9")):
@@ -458,7 +474,7 @@ def cmd_download(args):
 
     dl = Downloader(
         data_dir=args.output,
-        servers=args.servers.split(",") if args.servers else None,
+        servers=_parse_servers(args.servers),
         rate_limit=rps,
         format=args.format,
         fq=args.fq,
@@ -490,7 +506,7 @@ def cmd_update(args):
 
     dl = Downloader(
         data_dir=args.output,
-        servers=args.servers.split(",") if args.servers else None,
+        servers=_parse_servers(args.servers),
         rate_limit=rps,
         format=args.format,
     )
@@ -540,7 +556,7 @@ def cmd_download_xdxr(args):
 
     dl = Downloader(
         data_dir=args.output,
-        servers=args.servers.split(",") if args.servers else None,
+        servers=_parse_servers(args.servers),
         rate_limit=rps,
     )
 
