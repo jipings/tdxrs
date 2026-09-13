@@ -329,6 +329,20 @@ class Downloader:
                     if not stock_list:
                         print(f"[WARN] {market_name} 股票列表为空，跳过")
                         continue
+                    # 断点续传：跳过上次已处理到的股票 (P2-7)
+                    ckpt = self._load_checkpoint()
+                    if (ckpt and ckpt.get("market") == market_name
+                            and ckpt.get("category") == dir_name
+                            and ckpt.get("done", 0) > 0
+                            and ckpt.get("done", 0) < ckpt.get("total", 0)):
+                        last_idx = next(
+                            (i for i, (_, c) in enumerate(stock_list) if c == ckpt["last_code"]),
+                            -1)
+                        if last_idx >= 0:
+                            skipped = last_idx + 1
+                            stock_list = stock_list[skipped:]
+                            print(f"[INFO] 断点续传: {market_name}/{dir_name} 跳过前 {skipped} 只"
+                                  f"（上次完成至 {ckpt['last_code']}）")
                 else:
                     stock_list = [(market, c) for c in codes]
 
@@ -960,6 +974,21 @@ class Downloader:
         }
         with open(self._checkpoint_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+
+    def _load_checkpoint(self):
+        """读取断点续传进度 (CODE_REVIEW P2-7: 此前只写不读)"""
+        if not self._checkpoint_path.exists():
+            return None
+        try:
+            with open(self._checkpoint_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            # 进度过期（超过 24 小时）则忽略
+            updated = datetime.fromisoformat(data["updated_at"])
+            if (datetime.now() - updated).total_seconds() > 86400:
+                return None
+            return data
+        except Exception:
+            return None
 
     def _load_sync(self):
         """加载增量同步记录"""
