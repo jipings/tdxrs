@@ -49,17 +49,17 @@ impl PyTdxHqFundClient {
 
     /// 连接到 TDX 服务器
     #[pyo3(signature = (ip, port, timeout=None))]
-    fn connect(&self, ip: &str, port: u16, timeout: Option<f64>) -> PyResult<bool> {
-        self.client
-            .connect(ip, port, timeout)
+    fn connect(&self, py: Python<'_>, ip: &str, port: u16, timeout: Option<f64>) -> PyResult<bool> {
+        // TCP+握手期间释放 GIL (CODE_REVIEW P0-8 复审)
+        py.detach(|| self.client.connect(ip, port, timeout))
             .map_err(|e| pyo3::exceptions::PyConnectionError::new_err(e.to_string()))
     }
 
     /// 连接到任意可用服务器
     #[pyo3(signature = (timeout=None))]
-    fn connect_to_any(&self, timeout: Option<f64>) -> PyResult<bool> {
-        self.client
-            .connect_to_any(timeout)
+    fn connect_to_any(&self, py: Python<'_>, timeout: Option<f64>) -> PyResult<bool> {
+        // connect_to_any 最坏遍历上百台服务器，持 GIL 会冻结全部 Python 线程
+        py.detach(|| self.client.connect_to_any(timeout))
             .map_err(|e| pyo3::exceptions::PyConnectionError::new_err(e.to_string()))
     }
 

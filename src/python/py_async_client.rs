@@ -155,9 +155,8 @@ impl PyAsyncTdxHqClient {
         count: u16,
         fq: u8,
     ) -> PyResult<Py<PyAny>> {
-        let bars = self
-            .rt
-            .block_on(self.client.get_security_bars(category, market, code, start, count, fq))
+        let bars = py
+            .detach(|| self.rt.block_on(self.client.get_security_bars(category, market, code, start, count, fq)))
             .map_err(to_py_err)?;
 
         let list = PyList::empty(py);
@@ -191,9 +190,8 @@ impl PyAsyncTdxHqClient {
         count: u16,
         fq: u8,
     ) -> PyResult<Py<PyAny>> {
-        let bars = self
-            .rt
-            .block_on(self.client.get_security_bars_all(category, market, code, count, fq))
+        let bars = py
+            .detach(|| self.rt.block_on(self.client.get_security_bars_all(category, market, code, count, fq)))
             .map_err(to_py_err)?;
 
         let list = PyList::empty(py);
@@ -230,9 +228,8 @@ impl PyAsyncTdxHqClient {
         count: u16,
         fq: u8,
     ) -> PyResult<Py<PyAny>> {
-        let bars = self
-            .rt
-            .block_on(self.client.get_index_bars(category, market, code, start, count, fq))
+        let bars = py
+            .detach(|| self.rt.block_on(self.client.get_index_bars(category, market, code, start, count, fq)))
             .map_err(to_py_err)?;
 
         let list = PyList::empty(py);
@@ -268,9 +265,8 @@ impl PyAsyncTdxHqClient {
         count: u16,
         fq: u8,
     ) -> PyResult<Py<PyAny>> {
-        let bars = self
-            .rt
-            .block_on(self.client.get_index_bars(category, market, code, 0, count, fq))
+        let bars = py
+            .detach(|| self.rt.block_on(self.client.get_index_bars(category, market, code, 0, count, fq)))
             .map_err(to_py_err)?;
 
         let list = PyList::empty(py);
@@ -306,9 +302,8 @@ impl PyAsyncTdxHqClient {
         all_stock: Vec<(u8, String)>,
     ) -> PyResult<Py<PyAny>> {
         let refs: Vec<(u8, &str)> = all_stock.iter().map(|(m, c)| (*m, c.as_str())).collect();
-        let quotes = self
-            .rt
-            .block_on(self.client.get_security_quotes(&refs))
+        let quotes = py
+            .detach(|| self.rt.block_on(self.client.get_security_quotes(&refs)))
             .map_err(to_py_err)?;
 
         let list = PyList::empty(py);
@@ -371,9 +366,8 @@ impl PyAsyncTdxHqClient {
         market: u8,
         start: u16,
     ) -> PyResult<Py<PyAny>> {
-        let data = self
-            .rt
-            .block_on(self.client.get_security_list(market, start))
+        let data = py
+            .detach(|| self.rt.block_on(self.client.get_security_list(market, start)))
             .map_err(to_py_err)?;
 
         let list = PyList::empty(py);
@@ -400,9 +394,8 @@ impl PyAsyncTdxHqClient {
         market: u8,
         code: &str,
     ) -> PyResult<Py<PyAny>> {
-        let data = self
-            .rt
-            .block_on(self.client.get_minute_time_data(market, code))
+        let data = py
+            .detach(|| self.rt.block_on(self.client.get_minute_time_data(market, code)))
             .map_err(to_py_err)?;
 
         let list = PyList::empty(py);
@@ -425,9 +418,8 @@ impl PyAsyncTdxHqClient {
         code: &str,
         date: u32,
     ) -> PyResult<Py<PyAny>> {
-        let data = self
-            .rt
-            .block_on(self.client.get_history_minute_time_data(market, code, date))
+        let data = py
+            .detach(|| self.rt.block_on(self.client.get_history_minute_time_data(market, code, date)))
             .map_err(to_py_err)?;
 
         let list = PyList::empty(py);
@@ -452,9 +444,8 @@ impl PyAsyncTdxHqClient {
         start: u16,
         count: u16,
     ) -> PyResult<Py<PyAny>> {
-        let data = self
-            .rt
-            .block_on(self.client.get_transaction_data(market, code, start, count))
+        let data = py
+            .detach(|| self.rt.block_on(self.client.get_transaction_data(market, code, start, count)))
             .map_err(to_py_err)?;
 
         let list = PyList::empty(py);
@@ -482,12 +473,11 @@ impl PyAsyncTdxHqClient {
         count: u16,
         date: u32,
     ) -> PyResult<Py<PyAny>> {
-        let data = self
-            .rt
-            .block_on(
-                self.client
-                    .get_history_transaction_data(market, code, start, count, date),
-            )
+        let data = py
+            .detach(|| {
+                self.rt
+                    .block_on(self.client.get_history_transaction_data(market, code, start, count, date))
+            })
             .map_err(to_py_err)?;
 
         let list = PyList::empty(py);
@@ -515,9 +505,8 @@ impl PyAsyncTdxHqClient {
         market: u8,
         code: &str,
     ) -> PyResult<Py<PyAny>> {
-        let info = self
-            .rt
-            .block_on(self.client.get_finance_info(market, code))
+        let info = py
+            .detach(|| self.rt.block_on(self.client.get_finance_info(market, code)))
             .map_err(to_py_err)?;
 
         let dict = PyDict::new(py);
@@ -567,9 +556,8 @@ impl PyAsyncTdxHqClient {
         market: u8,
         code: &str,
     ) -> PyResult<Py<PyAny>> {
-        let data = self
-            .rt
-            .block_on(self.client.get_xdxr_info(market, code))
+        let data = py
+            .detach(|| self.rt.block_on(self.client.get_xdxr_info(market, code)))
             .map_err(to_py_err)?;
 
         let list = PyList::empty(py);
@@ -615,9 +603,8 @@ impl PyAsyncTdxHqClient {
         count: u16,
         fq: u8,
     ) -> PyResult<Py<PyAny>> {
-        let bars = self
-            .rt
-            .block_on(self.client.get_security_bars(category, market, code, start, count, fq))
+        let bars = py
+            .detach(|| self.rt.block_on(self.client.get_security_bars(category, market, code, start, count, fq)))
             .map_err(to_py_err)?;
 
         let list = PyList::empty(py);
@@ -656,9 +643,8 @@ impl PyAsyncTdxHqClient {
         count: u16,
         fq: u8,
     ) -> PyResult<Py<PyAny>> {
-        let bars = self
-            .rt
-            .block_on(self.client.get_index_bars(category, market, code, start, count, fq))
+        let bars = py
+            .detach(|| self.rt.block_on(self.client.get_index_bars(category, market, code, start, count, fq)))
             .map_err(to_py_err)?;
 
         let list = PyList::empty(py);
@@ -692,9 +678,8 @@ impl PyAsyncTdxHqClient {
         all_stock: Vec<(u8, String)>,
     ) -> PyResult<Py<PyAny>> {
         let refs: Vec<(u8, &str)> = all_stock.iter().map(|(m, c)| (*m, c.as_str())).collect();
-        let quotes = self
-            .rt
-            .block_on(self.client.get_security_quotes(&refs))
+        let quotes = py
+            .detach(|| self.rt.block_on(self.client.get_security_quotes(&refs)))
             .map_err(to_py_err)?;
 
         let list = PyList::empty(py);
@@ -757,9 +742,8 @@ impl PyAsyncTdxHqClient {
         count: u16,
         fq: u8,
     ) -> PyResult<Py<PyAny>> {
-        let bars = self
-            .rt
-            .block_on(self.client.get_security_bars(category, market, code, start, count, fq))
+        let bars = py
+            .detach(|| self.rt.block_on(self.client.get_security_bars(category, market, code, start, count, fq)))
             .map_err(to_py_err)?;
         crate::python::py_dataframe::security_bars_to_df(py, &bars)
     }
@@ -778,9 +762,8 @@ impl PyAsyncTdxHqClient {
         count: u16,
         fq: u8,
     ) -> PyResult<Py<PyAny>> {
-        let bars = self
-            .rt
-            .block_on(self.client.get_index_bars(category, market, code, start, count, fq))
+        let bars = py
+            .detach(|| self.rt.block_on(self.client.get_index_bars(category, market, code, start, count, fq)))
             .map_err(to_py_err)?;
         crate::python::py_dataframe::index_bars_to_df(py, &bars)
     }
@@ -792,9 +775,8 @@ impl PyAsyncTdxHqClient {
         all_stock: Vec<(u8, String)>,
     ) -> PyResult<Py<PyAny>> {
         let refs: Vec<(u8, &str)> = all_stock.iter().map(|(m, c)| (*m, c.as_str())).collect();
-        let quotes = self
-            .rt
-            .block_on(self.client.get_security_quotes(&refs))
+        let quotes = py
+            .detach(|| self.rt.block_on(self.client.get_security_quotes(&refs)))
             .map_err(to_py_err)?;
         crate::python::py_dataframe::quotes_to_df(py, &quotes)
     }
@@ -807,9 +789,8 @@ impl PyAsyncTdxHqClient {
     ) -> PyResult<Py<PyAny>> {
         let mut infos = Vec::new();
         for (market, code) in &stocks {
-            let info = self
-                .rt
-                .block_on(self.client.get_finance_info(*market, code))
+            let info = py
+                .detach(|| self.rt.block_on(self.client.get_finance_info(*market, code)))
                 .map_err(to_py_err)?;
             infos.push((info,));
         }

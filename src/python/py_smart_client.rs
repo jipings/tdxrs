@@ -35,9 +35,9 @@ impl PyTdxSmartClient {
     /// 仅验证 TCP + 握手，不做 K 线健康检查。
     /// 优先使用缓存的成功服务器。
     #[pyo3(signature = (timeout=None))]
-    fn connect_to_any(&self, timeout: Option<f64>) -> PyResult<bool> {
-        self.client
-            .connect_to_any(timeout)
+    fn connect_to_any(&self, py: Python<'_>, timeout: Option<f64>) -> PyResult<bool> {
+        // 连接/握手期间释放 GIL (CODE_REVIEW P0-8 复审)
+        py.detach(|| self.client.connect_to_any(timeout))
             .map_err(|e| pyo3::exceptions::PyConnectionError::new_err(e.to_string()))
     }
 
@@ -154,8 +154,10 @@ impl PyTdxSmartClient {
     /// 探测所有服务器并更新缓存
     ///
     /// 类似 mootdx 的 bestip 功能。
-    fn probe_and_cache(&self, timeout_secs: f64) -> Vec<(String, u16, String, u32)> {
-        self.client.probe_and_cache(timeout_secs)
+    fn probe_and_cache(&self, py: Python<'_>, timeout_secs: f64) -> Vec<(String, u16, String, u32)> {
+        // 全量探测最坏上百台服务器 × 三段探测，持 GIL 会冻结其他
+        // Python 线程数分钟 (CODE_REVIEW P0-8 复审 — 原报告点名最重案例)
+        py.detach(|| self.client.probe_and_cache(timeout_secs))
     }
 
     /// 断开连接

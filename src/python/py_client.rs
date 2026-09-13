@@ -779,8 +779,10 @@ impl PyTdxHqClient {
     ) -> PyResult<Py<PyAny>> {
         let mut infos = Vec::new();
         for (market, code) in &stocks {
-            let info = self.client
-                .get_finance_info(*market, code)
+            // 每次 I/O 释放 GIL：N 只股票的串行时延不得冻结其他 Python 线程
+            // (CODE_REVIEW P0-8 复审)
+            let info = py
+                .detach(|| self.client.get_finance_info(*market, code))
                 .map_err(to_py_err)?;
             infos.push((info,));
         }
