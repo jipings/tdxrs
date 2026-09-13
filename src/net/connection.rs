@@ -1,5 +1,5 @@
 use std::io::{Read, Write};
-use std::net::TcpStream;
+use std::net::{TcpStream, ToSocketAddrs};
 
 use crate::error::{Result, TdxError};
 
@@ -10,7 +10,16 @@ pub struct TcpConnection {
 impl TcpConnection {
     pub fn connect(ip: &str, port: u16, timeout_secs: f64) -> Result<Self> {
         let addr = format!("{}:{}", ip, port);
-        let stream = TcpStream::connect(&addr).map_err(|e| {
+        // 连接阶段也必须受超时约束：阻塞式 TcpStream::connect 对不可达
+        // 地址会挂到 OS 级 TCP 超时(~2min)，connect_to_any 遍历上百台
+        // 服务器时最坏可挂数小时 (CODE_REVIEW P1-4)
+        let sock_addr = addr
+            .to_socket_addrs()
+            .map_err(|e| TdxError::Connection(format!("resolve {}: {}", addr, e)))?
+            .next()
+            .ok_or_else(|| TdxError::Connection(format!("resolve {}: no address", addr)))?;
+        let connect_to = std::time::Duration::from_secs_f64(timeout_secs.max(0.001));
+        let stream = TcpStream::connect_timeout(&sock_addr, connect_to).map_err(|e| {
             TdxError::Connection(format!("Failed to connect to {}: {}", addr, e))
         })?;
         stream
