@@ -377,13 +377,45 @@ fn read_response_raw(conn: &mut TcpConnection) -> Result<(ResponseHeader, Vec<u8
     Ok((header, body))
 }
 
-/// zlib 解压
+/// zlib 解压（兼容入口：无头部声明长度时使用）
 pub fn decompress_zlib(data: &[u8]) -> Result<Vec<u8>> {
+    decompress_zlib_checked(data, 0)
+}
+
+/// 单个响应解压输出的绝对上限（正常 TDX 响应 ≤64KB，8MB 已极宽松）
+pub const DECOMPRESS_ABS_LIMIT: usize = 8 * 1024 * 1024;
+
+/// zlib 解压 —— 带输出上限与 unzip_size 校验
+///
+/// 压缩体受 u16 zip_size 限制(≤64KB)，但 deflate 极限膨胀比约 1032:1，
+/// 单个恶意响应可解出 ~67MB；此前 read_to_end 不设上限且从不与头部
+/// unzip_size 比对 (CODE_REVIEW P1-5)。
+pub fn decompress_zlib_checked(data: &[u8], unzip_size: u32) -> Result<Vec<u8>> {
+    let limit = (unzip_size as usize)
+        .saturating_add(1024)
+        .min(DECOMPRESS_ABS_LIMIT);
     let mut decoder = ZlibDecoder::new(data);
-    let mut decompressed = Vec::new();
-    decoder.read_to_end(&mut decompressed)
+    let mut out = Vec::new();
+    decoder
+        .take(limit as u64 + 1)
+        .read_to_end(&mut out)
         .map_err(|e| crate::error_codes::ErrorCode::DECOMPRESS_FAILED.err(format!("{}", e)))?;
-    Ok(decompressed)
+    if out.len() > limit {
+        return Err(crate::error_codes::ErrorCode::DECOMPRESS_FAILED.err(format!(
+            "decompressed {} bytes exceeds limit {} (zip bomb?)",
+            out.len(),
+            limit
+        )));
+    }
+    if unzip_size > 0 && out.len() != unzip_size as usize {
+        crate::logw!(
+            "net",
+            "decompressed {} != declared unzip_size {}, data suspect",
+            out.len(),
+            unzip_size
+        );
+    }
+    Ok(out)
 }
 
 // ================================================================
@@ -671,5 +703,26 @@ mod tests {
     fn test_detect_trading_phase_returns_valid() {
         let phase = detect_trading_phase();
         assert!(matches!(phase, TradingPhase::Trading | TradingPhase::PrePost | TradingPhase::Closed));
+    }
+
+    // CODE_REVIEW P1-5: 高膨胀比流被上限拦截
+    #[test]
+    fn test_decompress_zlib_bomb_guard() {
+        use flate2::write::ZlibEncoder;
+        use flate2::Compression;
+        use std::io::Write;
+        // 声明 unzip_size=100，实际解出 1MB —— 超出 100+1024 上限应报错
+        let mut enc = ZlibEncoder::new(Vec::new(), Compression::new(9));
+        enc.write_all(&vec![0x41u8; 1024 * 1024]).unwrap();
+        let bomb = enc.finish().unwrap();
+        let r = decompress_zlib_checked(&bomb, 100);
+        assert!(r.is_err(), "超限解压必须报错");
+
+        // 正常数据: 声明与实际一致
+        let mut enc2 = ZlibEncoder::new(Vec::new(), Compression::new(9));
+        enc2.write_all(b"hello tdxrs").unwrap();
+        let normal = enc2.finish().unwrap();
+        let out = decompress_zlib_checked(&normal, "hello tdxrs".len() as u32).unwrap();
+        assert_eq!(out, b"hello tdxrs");
     }
 }

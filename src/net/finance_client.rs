@@ -147,12 +147,7 @@ impl TdxFinanceClient {
         }
 
         if header.zip_size != header.unzip_size {
-            let mut decoder = ZlibDecoder::new(&body_buf[..]);
-            let mut decompressed = Vec::new();
-            decoder.read_to_end(&mut decompressed).map_err(|e| {
-                crate::error_codes::ErrorCode::DECOMPRESS_FAILED.err(format!("{}", e))
-            })?;
-            Ok(decompressed)
+            utils::decompress_zlib_checked(&body_buf[..], header.unzip_size)
         } else {
             Ok(body_buf)
         }

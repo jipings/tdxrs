@@ -588,12 +588,7 @@ impl TdxHqClient {
 
         // Decompress if needed
         if header.zip_size != header.unzip_size {
-            let mut decoder = ZlibDecoder::new(&body_buf[..]);
-            let mut decompressed = Vec::new();
-            decoder.read_to_end(&mut decompressed).map_err(|e| {
-                ErrorCode::DECOMPRESS_FAILED.err(format!("{}", e))
-            })?;
-            Ok(decompressed)
+            utils::decompress_zlib_checked(&body_buf[..], header.unzip_size)
         } else {
             Ok(body_buf)
         }

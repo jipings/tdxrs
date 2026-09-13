@@ -882,12 +882,7 @@ impl AsyncTdxHqClient {
 }
 
 fn decompress_zlib(data: &[u8]) -> Result<Vec<u8>> {
-    let mut decoder = ZlibDecoder::new(data);
-    let mut decompressed = Vec::new();
-    decoder
-        .read_to_end(&mut decompressed)
-        .map_err(|e| crate::error_codes::ErrorCode::DECOMPRESS_FAILED.err(format!("{}", e)))?;
-    Ok(decompressed)
+    crate::net::utils::decompress_zlib(data)
 }
 
 #[cfg(test)]
