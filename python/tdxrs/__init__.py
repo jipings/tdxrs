@@ -14,7 +14,7 @@ try:
         TdxHqClient, AsyncTdxHqClient, TdxDirectClient, TdxSmartClient, TdxHqFundClient, TdxBlockClient,
     )
     try:
-        # 需要 cargo feature "f10" (默认启用)
+        # 需要 cargo feature "f10" (默认不启用 —— F10 资讯涉第三方版权，不随 pip 包发布)
         from tdxrs._internal import TdxF10Client
         _HAS_F10 = True
     except ImportError:
@@ -24,7 +24,7 @@ except ImportError:
         "tdxrs native module not found. Please install with: pip install tdxrs"
     )
 
-__version__ = "0.6.7"
+__version__ = "0.7.0"
 __all__ = [
     "DailyBarReader", "MinBarReader", "LcMinBarReader", "BlockReader", "FinancialReader",
     "TdxHqClient", "AsyncTdxHqClient", "TdxDirectClient", "TdxSmartClient", "TdxHqFundClient", "TdxBlockClient",
@@ -35,7 +35,7 @@ __all__ = [
 def __getattr__(name):
     if name == "TdxF10Client" and not _HAS_F10:
         raise ImportError(
-            "TdxF10Client 需要 cargo feature 'f10'（默认启用，当前构建未包含）。"
-            "重新构建: cargo build --features f10"
+            "TdxF10Client 需要 cargo feature 'f10'（默认不启用，F10 资讯涉第三方版权，"
+            "不随 pip 包发布）。从源码构建: maturin develop --release --features f10"
         )
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

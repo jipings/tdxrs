@@ -1,6 +1,6 @@
 [package]
 name = "tdxrs"
-version = "0.6.7"
+version = "0.7.0"
 edition = "2021"
 description = "TDX (通达信) market data parser — Rust implementation with Python bindings"
 license = "MIT"
@@ -10,8 +10,10 @@ repository = "https://github.com/jiangtaovan/tdxrs"
 homepage = "https://github.com/jiangtaovan/tdxrs"
 
 [features]
-# f10 默认启用: TdxF10Client 此前双重不可达 (feature 未开 + __init__ 不导出)
-default = ["f10"]
+# f10 默认不启用（合规口径，与 docs/public/F10.md 一致）：F10 资讯涉
+# 第三方内容版权，不随 pip wheel 发布，需源码编译 --features f10。
+# 4e9738c 曾为可达性临时默认开启，现按合规决定移回 (CODE_REVIEW D5)
+default = []
 f10 = []
 integration = []
 
