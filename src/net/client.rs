@@ -531,6 +531,9 @@ impl TdxHqClient {
         match self.try_send_and_recv(packet) {
             Ok(body) => return Ok(body),
             Err(e) if !self.auto_retry.load(Ordering::SeqCst) => return Err(e),
+            // 解析失败/解压失败等确定性错误重试必然同样失败，还会
+            // 触发无意义的服务器切换，白耗数秒延迟 (CODE_REVIEW P2-2)
+            Err(e) if !is_retryable_error(&e) => return Err(e),
             Err(_) => {}
         }
 
@@ -1315,4 +1318,12 @@ impl TdxHqClient {
 
         crate::reader::block::parse_block(&all_data)
     }
+}
+
+/// 判断错误是否值得重试（仅连接类瞬态错误）
+fn is_retryable_error(e: &TdxError) -> bool {
+    matches!(
+        e,
+        TdxError::Connection(_) | TdxError::Disconnected | TdxError::Io(_)
+    )
 }
