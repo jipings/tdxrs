@@ -25,7 +25,7 @@
 //! ## 注意事项
 //!
 //! - 首次使用时无缓存，行为与 TdxHqClient 相同
-//! - 缓存文件位于 `~/.tdxrs/server_cache.json`
+//! - 缓存文件位于 `~/.tdxrs/server_cache.json`（`TDXRS_CACHE_DIR` 可覆盖目录）
 //! - 黑名单有效期 24h，过期后自动重试
 
 use std::collections::HashMap;
@@ -81,21 +81,44 @@ struct ServerCache {
     last_success: Option<ServerCacheEntry>,
     blacklist: Vec<BlacklistEntry>,
     server_stats: HashMap<String, ServerStats>,
+    /// 落盘路径。`None` 表示纯内存（不落盘）。
+    ///
+    /// 不参与序列化：旧缓存文件无此字段，反序列化后由 `load_from` 绑定，
+    /// 缓存文件格式保持 `version/last_success/blacklist/server_stats` 不变。
+    #[serde(skip)]
+    path: Option<PathBuf>,
 }
 
 impl ServerCache {
+    /// 空缓存，绑定默认用户路径 (`TDXRS_CACHE_DIR` 可覆盖)
     fn new() -> Self {
+        Self::with_path(Self::cache_path())
+    }
+
+    /// 空缓存，绑定指定路径
+    ///
+    /// 单测必须用本构造器指向临时目录：`record_*`/`add_to_blacklist` 都会
+    /// 立即落盘，若沿用默认路径，`cargo test` 会覆盖开发者真实的服务器缓存
+    /// （实测后果：缓存被写成占位地址 1.2.3.4，下次冷启动在此地址上白等超时）。
+    fn with_path(path: impl Into<PathBuf>) -> Self {
         Self {
             version: 1,
             last_success: None,
             blacklist: Vec::new(),
             server_stats: HashMap::new(),
+            path: Some(path.into()),
         }
     }
 
     /// 获取缓存文件路径
+    ///
+    /// 优先级：`TDXRS_CACHE_DIR` > `USERPROFILE` > `HOME` > 当前目录。
     fn cache_path() -> PathBuf {
-        // 优先使用 HOME 环境变量，否则使用当前目录
+        if let Ok(dir) = std::env::var("TDXRS_CACHE_DIR") {
+            if !dir.is_empty() {
+                return PathBuf::from(dir).join("server_cache.json");
+            }
+        }
         let home = std::env::var("USERPROFILE")
             .or_else(|_| std::env::var("HOME"))
             .map(PathBuf::from)
@@ -105,34 +128,51 @@ impl ServerCache {
 
     /// 加载缓存
     fn load() -> Self {
-        let path = Self::cache_path();
+        Self::load_from(Self::cache_path())
+    }
+
+    /// 从指定路径加载缓存（加载失败退回空缓存，仍绑定该路径）
+    fn load_from(path: PathBuf) -> Self {
         match fs::read_to_string(&path) {
-            Ok(content) => match serde_json::from_str(&content) {
-                Ok(cache) => cache,
+            Ok(content) => match serde_json::from_str::<Self>(&content) {
+                Ok(mut cache) => {
+                    cache.path = Some(path);
+                    cache
+                }
                 Err(e) => {
                     logw!("cache", "failed to parse cache: {}", e);
-                    Self::new()
+                    Self::with_path(path)
                 }
             },
-            Err(_) => Self::new(),
+            Err(_) => Self::with_path(path),
         }
     }
 
-    /// 保存缓存
+    /// 保存缓存（未绑定路径时不落盘）
     fn save(&self) {
-        let path = Self::cache_path();
+        let Some(path) = self.path.as_ref() else {
+            return;
+        };
         if let Some(parent) = path.parent() {
             let _ = fs::create_dir_all(parent);
         }
         match serde_json::to_string_pretty(self) {
             Ok(content) => {
-                if let Err(e) = fs::write(&path, content) {
+                if let Err(e) = fs::write(path, content) {
                     logw!("cache", "failed to save cache: {}", e);
                 }
             }
             Err(e) => {
                 logw!("cache", "failed to serialize cache: {}", e);
             }
+        }
+    }
+
+    /// 清除 last_success（缓存指向不可用服务器时自愈）
+    fn clear_last_success(&mut self) {
+        if self.last_success.is_some() {
+            self.last_success = None;
+            self.save();
         }
     }
 
@@ -253,10 +293,17 @@ impl TdxSmartClient {
     /// 仅验证 TCP + 握手，不做 K 线健康检查。
     /// 优先使用缓存的成功服务器。
     pub fn connect_to_any(&self, timeout: Option<f64>) -> Result<bool> {
-        let cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
+        // 先 clone 出缓存条目再放锁：持锁跨 connect 会让 stats/保存路径阻塞
+        // 整个 timeout 窗口（实测坏缓存下冷启动 8.14s 全程持锁）。
+        let cached = self
+            .cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .last_success
+            .clone();
 
         // 1. 尝试缓存的成功服务器
-        if let Some(ref last) = cache.last_success {
+        if let Some(last) = cached {
             logi!(
                 "smart",
                 "trying cached server: {} ({}:{})",
@@ -264,27 +311,23 @@ impl TdxSmartClient {
                 last.ip,
                 last.port
             );
-            match self.inner.connect(&last.ip, last.port, timeout) {
-                Ok(true) => {
-                    *self
-                        .current_server
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner()) =
-                        Some((last.ip.clone(), last.port, last.name.clone()));
-                    self.health_checked.store(false, Ordering::SeqCst);
-                    return Ok(true);
-                }
+            match self.connect_and_record(&last.ip, last.port, &last.name, timeout) {
+                Ok(true) => return Ok(true),
                 _ => {
                     logw!(
                         "smart",
                         "cached server {} unavailable, trying next",
                         last.ip
                     );
+                    // 自愈：缓存指向不可用服务器时清掉 last_success，
+                    // 否则每次冷启动都要在这个地址上白等一个 timeout。
+                    self.cache
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .clear_last_success();
                 }
             }
         }
-
-        drop(cache);
 
         // 2. 遍历 PRIMARY_SERVERS (跳过黑名单)
         for &(name, ip, port) in PRIMARY_SERVERS {
@@ -298,16 +341,8 @@ impl TdxSmartClient {
                 continue;
             }
 
-            match self.inner.connect(ip, port, timeout) {
-                Ok(true) => {
-                    *self
-                        .current_server
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner()) =
-                        Some((ip.to_string(), port, name.to_string()));
-                    self.health_checked.store(false, Ordering::SeqCst);
-                    return Ok(true);
-                }
+            match self.connect_and_record(ip, port, name, timeout) {
+                Ok(true) => return Ok(true),
                 _ => continue,
             }
         }
@@ -323,22 +358,44 @@ impl TdxSmartClient {
                 continue;
             }
 
-            match self.inner.connect(ip, port, timeout) {
-                Ok(true) => {
-                    *self
-                        .current_server
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner()) =
-                        Some((ip.to_string(), port, name.to_string()));
-                    self.health_checked.store(false, Ordering::SeqCst);
-                    return Ok(true);
-                }
+            match self.connect_and_record(ip, port, name, timeout) {
+                Ok(true) => return Ok(true),
                 _ => continue,
             }
         }
 
         loge!("smart", "all servers unreachable");
         Err(ErrorCode::CONNECTION_FAILED.err("all servers unreachable"))
+    }
+
+    /// 连接指定服务器，成功后记录到缓存 (供 `connect_to_any` 遍历使用)
+    fn connect_and_record(
+        &self,
+        ip: &str,
+        port: u16,
+        name: &str,
+        timeout: Option<f64>,
+    ) -> Result<bool> {
+        let started = Instant::now();
+        match self.inner.connect(ip, port, timeout) {
+            Ok(true) => {
+                *self
+                    .current_server
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner()) =
+                    Some((ip.to_string(), port, name.to_string()));
+                self.health_checked.store(false, Ordering::SeqCst);
+                // 回写成功服务器，使上次失败留下的坏缓存能在一次连接内自愈
+                let mut cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
+                cache.record_success(ip, port, name, started.elapsed().as_millis() as u32);
+                Ok(true)
+            }
+            _ => {
+                let mut cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
+                cache.record_failure(ip, port);
+                Ok(false)
+            }
+        }
     }
 
     /// 惰性健康检查
@@ -662,9 +719,21 @@ impl Default for TdxSmartClient {
 mod tests {
     use super::*;
 
+    /// 单测专用缓存路径：必须指向临时目录
+    ///
+    /// `record_*`/`add_to_blacklist` 会立即落盘，沿用默认路径会让 `cargo test`
+    /// 覆盖开发者真实的 `~/.tdxrs/server_cache.json`（实测把 last_success 写成
+    /// 占位地址 1.2.3.4，导致之后每次冷启动白等一个 timeout）。
+    fn tmp_cache_path(tag: &str) -> PathBuf {
+        let pid = std::process::id();
+        let dir = std::env::temp_dir().join(format!("tdxrs_test_cache_{pid}_{tag}"));
+        let _ = fs::remove_dir_all(&dir);
+        dir.join("server_cache.json")
+    }
+
     #[test]
     fn test_server_cache_blacklist() {
-        let mut cache = ServerCache::new();
+        let mut cache = ServerCache::with_path(tmp_cache_path("blacklist"));
         assert!(!cache.is_blacklisted("1.2.3.4", 7709));
 
         cache.add_to_blacklist("1.2.3.4", 7709, "test");
@@ -674,7 +743,7 @@ mod tests {
 
     #[test]
     fn test_server_cache_stats() {
-        let mut cache = ServerCache::new();
+        let mut cache = ServerCache::with_path(tmp_cache_path("stats"));
         cache.record_success("1.2.3.4", 7709, "test", 100);
         cache.record_success("1.2.3.4", 7709, "test", 200);
         cache.record_failure("1.2.3.4", 7709);
@@ -684,5 +753,49 @@ mod tests {
         assert_eq!(stats.success, 2);
         assert_eq!(stats.fail, 1);
         assert_eq!(stats.avg_latency, 150); // (100 + 200) / 2
+    }
+
+    #[test]
+    fn test_cache_persists_only_to_bound_path() {
+        // 写绑定路径后可从该路径读回；文件格式不含 path 字段
+        let path = tmp_cache_path("roundtrip");
+        let mut cache = ServerCache::with_path(path.clone());
+        cache.record_success("9.9.9.9", 7709, "srv", 42);
+
+        let raw = fs::read_to_string(&path).expect("缓存应落盘");
+        assert!(!raw.contains("path"), "path 字段不应进缓存文件: {raw}");
+        let loaded = ServerCache::load_from(path);
+        assert_eq!(loaded.last_success.unwrap().ip, "9.9.9.9");
+    }
+
+    #[test]
+    fn test_default_cache_path_not_touched_by_bound_cache() {
+        // 回归：非默认路径的缓存写入不得触碰真实用户缓存
+        let default_path = ServerCache::cache_path();
+        let before = fs::read_to_string(&default_path).ok();
+
+        let mut cache = ServerCache::with_path(tmp_cache_path("isolation"));
+        cache.record_success("1.2.3.4", 7709, "test", 100);
+        cache.add_to_blacklist("1.2.3.4", 7709, "test");
+
+        assert_eq!(
+            fs::read_to_string(&default_path).ok(),
+            before,
+            "默认缓存文件被单测改写: {}",
+            default_path.display()
+        );
+    }
+
+    #[test]
+    fn test_clear_last_success_self_heal() {
+        // 自愈：坏缓存清掉 last_success 后不再被优先尝试
+        let path = tmp_cache_path("selfheal");
+        let mut cache = ServerCache::with_path(path.clone());
+        cache.record_success("1.2.3.4", 7709, "bad", 100);
+        assert!(cache.last_success.is_some());
+
+        cache.clear_last_success();
+        assert!(cache.last_success.is_none());
+        assert!(ServerCache::load_from(path).last_success.is_none(), "落盘未生效");
     }
 }
