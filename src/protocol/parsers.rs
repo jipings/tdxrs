@@ -597,24 +597,37 @@ pub fn parse_history_transaction_data_with_coefficient(
 /// 十进制字符串前段为小时，随后 2 位为分钟，末 4 位为分钟内的小数部分，
 /// ×60/10000 得到秒 (例如 15298827 -> 15:29:52.962)；
 /// 分钟位 >= 60 时后 6 位视为小时的小数部分解码。
-/// 位长不足 8 的原样返回数字字符串 (与 pytdx 行为一致)。
+///
+/// 输出统一为零填充的 `HH:MM:SS.mmm` (定宽 12 字符)。此处**有意偏离 pytdx**：
+/// pytdx 的 `'%s:' % time_stamp[-6:-4]` 不补零，下午收盘后 (15:0x) 与全部
+/// 上午时段会产出 `15:6:01.566` 这类 11 字符串 —— 无法按字典序比较、
+/// 无法定长切片解析。偏离两处：
+/// 1. 分钟/小时补零 (实测 800 只快照里 797 只为缺零格式)；
+/// 2. 位长 7 的值按时间解码 —— 上午 09:xx 的十进制化会丢前导零
+///    (09:35 -> "9350000")，pytdx 原样返回数字串，消费者拿到的是裸数字。
+///
+/// 位长不足 7 或小时段超 2 位的原样返回 (非时间戳值，与 pytdx 一致)。
 pub fn format_servertime(ts: u64) -> String {
     let s = format!("{}", ts);
-    if s.len() < 8 {
+    if s.len() < 7 {
         return s;
     }
     let (hh, rest) = s.split_at(s.len() - 6);
+    if hh.len() > 2 {
+        // 小时段超 2 位 -> 非时间戳形态, 原样返回 (避免产出形似时间的错值)
+        return s;
+    }
     let mm = &rest[..2];
     if let (Ok(mm_v), Ok(tail_v)) = (mm.parse::<u32>(), rest[2..].parse::<u64>()) {
         if mm_v < 60 {
-            return format!("{}:{}:{:06.3}", hh, mm_v, tail_v as f64 * 60.0 / 10000.0);
+            return format!("{:0>2}:{:02}:{:06.3}", hh, mm_v, tail_v as f64 * 60.0 / 10000.0);
         }
     }
     // 分钟位异常：后 6 位按小时的小数部分解码 (pytdx else 分支)
     if let Ok(whole) = rest.parse::<u64>() {
         let mins = whole * 60 / 1_000_000;
         let secs = (whole * 60 % 1_000_000) as f64 * 60.0 / 1_000_000.0;
-        format!("{}:{:02}:{:06.3}", hh, mins, secs)
+        format!("{:0>2}:{:02}:{:06.3}", hh, mins, secs)
     } else {
         s
     }
@@ -1452,9 +1465,38 @@ mod tests {
 
     #[test]
     fn test_servertime_short_value() {
-        // 位长不足 8: 原样返回数字字符串 (与 pytdx 一致)
+        // 位长不足 7: 原样返回数字字符串 (与 pytdx 一致)
         assert_eq!(format_servertime(0), "0");
         assert_eq!(format_servertime(123), "123");
+    }
+
+    #[test]
+    fn test_servertime_pads_single_digit_minute() {
+        // 收盘后 15:0x 实测形态: 15060261 曾渲染成 "15:6:01.566"
+        assert_eq!(format_servertime(15060261), "15:06:01.566");
+        let s = format_servertime(15060261);
+        assert_eq!(s.len(), 12, "定宽 12 才能按偏移/字典序解析: {}", s);
+    }
+
+    #[test]
+    fn test_servertime_morning_leading_zero_loss() {
+        // 上午 09:35 的十进制化丢前导零 -> 7 位; 仍应解出带零的小时
+        assert_eq!(format_servertime(9350000), "09:35:00.000");
+        assert_eq!(format_servertime(9000000), "09:00:00.000");
+    }
+
+    #[test]
+    fn test_servertime_all_outputs_fixed_width() {
+        // 覆盖上午/下午/缺零分钟: 凡被解码的都必须是定宽 12
+        for ts in [15298827u64, 15290050, 15060261, 9350000, 9000000] {
+            assert_eq!(format_servertime(ts).len(), 12, "ts={}", ts);
+        }
+    }
+
+    #[test]
+    fn test_servertime_non_time_shaped_passthrough() {
+        // 小时段超 2 位 -> 非时间戳, 原样返回而不产出 "145:57:.." 这类错值
+        assert_eq!(format_servertime(145959999), "145959999");
     }
 
     #[test]
