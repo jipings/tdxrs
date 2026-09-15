@@ -1,6 +1,7 @@
 //! Python 绑定 — TdxSmartClient
 //!
-//! 提供与 TdxHqClient 相同的 API，但采用分层健康检查和服务器缓存策略。
+//! 提供 TdxHqClient 的 API 子集（bars/quotes + 连接/缓存管理），
+//! 采用分层健康检查和服务器缓存策略。
 
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
@@ -10,11 +11,12 @@ use crate::net::smart_client::TdxSmartClient;
 
 /// 智能连接客户端
 ///
-/// 与 TdxHqClient 相同的 API，但采用不同的连接策略:
+/// TdxHqClient 的 API 子集（bars/quotes + 连接/缓存管理；无分时/分笔/xdxr 等），
+/// 连接策略不同:
 /// - 快速初始连接: 仅验证 TCP + 握手，不做 K 线健康检查
 /// - 惰性健康检查: 首次 K 线请求返回空时触发，自动切换服务器
 /// - 本地缓存: 记录成功/失败服务器，下次连接优先使用缓存
-/// - 黑名单机制: 连续失败的服务器自动加入黑名单 (24h 过期)
+/// - 黑名单机制: 连续失败(≥3)的服务器自动加入黑名单（24h 过期，成功即解除）
 #[pyclass(name = "TdxSmartClient")]
 pub struct PyTdxSmartClient {
     client: TdxSmartClient,
