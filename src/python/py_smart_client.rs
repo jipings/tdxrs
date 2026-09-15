@@ -16,7 +16,8 @@ use crate::net::smart_client::TdxSmartClient;
 /// - 快速初始连接: 仅验证 TCP + 握手，不做 K 线健康检查
 /// - 惰性健康检查: 首次 K 线请求返回空时触发，自动切换服务器
 /// - 本地缓存: 记录成功/失败服务器，下次连接优先使用缓存
-/// - 黑名单机制: 连续失败(≥3)的服务器自动加入黑名单（24h 过期，成功即解除）
+/// - 黑名单机制: 连败≥3 或协议异常自动拉黑（24h 过期；连败条目成功即解除，
+///   候选全员拉黑时降级照常尝试）
 #[pyclass(name = "TdxSmartClient")]
 pub struct PyTdxSmartClient {
     client: TdxSmartClient,
@@ -106,8 +107,7 @@ impl PyTdxSmartClient {
             dict.set_item("open", q.open)?;
             dict.set_item("high", q.high)?;
             dict.set_item("low", q.low)?;
-            // 字段集对齐 TdxHqClient（servertime 必备，新鲜度守卫依赖）；
-            // active*/reversed_bytes* 为额外保留的原始字段（超集，不破坏既有消费者）
+            // 对齐 TdxHqClient（新鲜度守卫依赖 servertime）
             dict.set_item("servertime", &q.servertime)?;
             dict.set_item("vol", q.vol)?;
             dict.set_item("cur_vol", q.cur_vol)?;
@@ -134,6 +134,7 @@ impl PyTdxSmartClient {
             dict.set_item("ask5", q.ask5)?;
             dict.set_item("bid_vol5", q.bid_vol5)?;
             dict.set_item("ask_vol5", q.ask_vol5)?;
+            // 原始字段是 TdxHqClient 之外的额外超集，保留以不破坏既有消费者
             dict.set_item("reversed_bytes0", q.reversed_bytes0)?;
             dict.set_item("reversed_bytes1", q.reversed_bytes1)?;
             dict.set_item("reversed_bytes2", q.reversed_bytes2)?;
