@@ -72,7 +72,13 @@ struct ServerStats {
     success: u32,
     fail: u32,
     avg_latency: u32,
+    /// 连续失败计数（成功清零）。旧缓存文件无此字段，serde default 兜底为 0。
+    #[serde(default)]
+    consecutive_fail: u32,
 }
+
+/// 连续失败达到该次数的服务器自动加入黑名单（成功即清零/解除）
+const BLACKLIST_FAIL_STREAK: u32 = 3;
 
 /// 服务器缓存文件结构
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -235,24 +241,37 @@ impl ServerCache {
             success: 0,
             fail: 0,
             avg_latency: 0,
+            consecutive_fail: 0,
         });
         stats.success += 1;
+        stats.consecutive_fail = 0;
         stats.avg_latency = (stats.avg_latency * (stats.success - 1) + latency_ms) / stats.success;
 
-        self.save();
+        // 成功即解除拉黑：黑名单条目的恢复路径（probe_and_cache 探活成功）
+        self.blacklist.retain(|e| !(e.ip == ip && e.port == port));
+
+        self.save()
     }
 
     /// 记录失败连接
     fn record_failure(&mut self, ip: &str, port: u16) {
         let key = format!("{}:{}", ip, port);
-        let stats = self.server_stats.entry(key).or_insert(ServerStats {
-            success: 0,
-            fail: 0,
-            avg_latency: 0,
-        });
-        stats.fail += 1;
+        let should_blacklist = {
+            let stats = self.server_stats.entry(key).or_insert(ServerStats {
+                success: 0,
+                fail: 0,
+                avg_latency: 0,
+                consecutive_fail: 0,
+            });
+            stats.fail += 1;
+            stats.consecutive_fail += 1;
+            stats.consecutive_fail >= BLACKLIST_FAIL_STREAK
+        };
+        if should_blacklist {
+            self.add_to_blacklist(ip, port, "connect_fail_streak");
+        }
 
-        self.save();
+        self.save()
     }
 }
 
@@ -503,6 +522,7 @@ impl TdxSmartClient {
                 continue;
             }
 
+            let started = Instant::now();
             match self.inner.connect(ip, port, Some(5.0)) {
                 Ok(true) => {
                     *self
@@ -511,15 +531,48 @@ impl TdxSmartClient {
                         .unwrap_or_else(|e| e.into_inner()) =
                         Some((ip.to_string(), port, name.to_string()));
                     self.health_checked.store(false, Ordering::SeqCst);
+                    // 切服成功必须回写缓存：否则 last_success 仍指向刚切走的故障机，
+                    // 下次冷启动会先在坏地址上白等一个 connect timeout
+                    let latency = started.elapsed().as_millis() as u32;
+                    self.cache
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .record_success(ip, port, name, latency);
                     logi!("smart", "switched to server: {}:{}", ip, port);
                     return Ok(true);
                 }
-                _ => continue,
+                _ => {
+                    // 候选连接失败同样记账（连续达标自动拉黑），不能无声略过
+                    logw!("smart", "candidate {}:{} connect failed", ip, port);
+                    self.cache
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .record_failure(ip, port);
+                    continue;
+                }
             }
         }
 
         loge!("smart", "no alternative server available");
         Err(ErrorCode::CONNECTION_FAILED.err("no alternative server available"))
+    }
+
+    /// 给当前连接的服务器记一次失败（请求报错、准备切服时调用）
+    ///
+    /// 惰性健康检查路径（lazy_health_check）各自记账；这里只补错误路径的缺口，
+    /// 否则连接类故障永不进入连败统计、也永不拉黑。
+    fn record_current_failure(&self) {
+        let cur = self
+            .current_server
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        if let Some((ip, port, _)) = cur {
+            self.cache
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .record_failure(&ip, port);
+        }
     }
 
     /// 获取 K 线数据 (带自动重试)
@@ -583,6 +636,7 @@ impl TdxSmartClient {
                         e
                     );
                     last_err = Some(e);
+                    self.record_current_failure();
                     // 连接错误，尝试切换服务器
                     match self.try_next_server() {
                         Ok(true) => continue,
@@ -631,6 +685,7 @@ impl TdxSmartClient {
                 }
                 Err(e) => {
                     last_err = Some(e);
+                    self.record_current_failure();
                     logw!(
                         "smart",
                         "attempt {}/{}: error, trying next server",
@@ -797,5 +852,54 @@ mod tests {
         cache.clear_last_success();
         assert!(cache.last_success.is_none());
         assert!(ServerCache::load_from(path).last_success.is_none(), "落盘未生效");
+    }
+
+    #[test]
+    fn test_record_failure_streak_blacklist() {
+        // 连接类失败连续累计（成功清零），达到阈值自动拉黑
+        let mut cache = ServerCache::with_path(tmp_cache_path("streak"));
+        cache.record_failure("1.2.3.4", 7709);
+        cache.record_failure("1.2.3.4", 7709);
+        assert!(!cache.is_blacklisted("1.2.3.4", 7709), "连败 2 次不应拉黑");
+
+        cache.record_failure("1.2.3.4", 7709);
+        assert!(cache.is_blacklisted("1.2.3.4", 7709), "连败 3 次应拉黑");
+        assert_eq!(
+            cache.blacklist.last().unwrap().reason,
+            "connect_fail_streak"
+        );
+    }
+
+    #[test]
+    fn test_record_success_resets_streak_and_unblacklists() {
+        let mut cache = ServerCache::with_path(tmp_cache_path("reset"));
+        cache.record_failure("1.2.3.4", 7709);
+        cache.record_failure("1.2.3.4", 7709);
+        cache.record_success("1.2.3.4", 7709, "srv", 10); // streak 清零
+        cache.record_failure("1.2.3.4", 7709);
+        cache.record_failure("1.2.3.4", 7709);
+        assert!(
+            !cache.is_blacklisted("1.2.3.4", 7709),
+            "成功清零后连败不足阈值不应拉黑"
+        );
+
+        cache.record_failure("1.2.3.4", 7709); // streak=3 → 拉黑
+        assert!(cache.is_blacklisted("1.2.3.4", 7709));
+        cache.record_success("1.2.3.4", 7709, "srv", 10); // 成功解除（探活恢复路径）
+        assert!(!cache.is_blacklisted("1.2.3.4", 7709), "成功应解除拉黑");
+    }
+
+    #[test]
+    fn test_legacy_cache_without_streak_field_loads() {
+        // 旧缓存文件的 server_stats 无 consecutive_fail 字段，serde default 兜底
+        let path = tmp_cache_path("legacy");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(
+            &path,
+            r#"{"version":1,"last_success":null,"blacklist":[],"server_stats":{"1.2.3.4:7709":{"success":1,"fail":1,"avg_latency":10}}}"#,
+        )
+        .unwrap();
+        let cache = ServerCache::load_from(path);
+        assert_eq!(cache.server_stats.get("1.2.3.4:7709").unwrap().consecutive_fail, 0);
     }
 }
