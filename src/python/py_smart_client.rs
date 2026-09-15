@@ -104,6 +104,9 @@ impl PyTdxSmartClient {
             dict.set_item("open", q.open)?;
             dict.set_item("high", q.high)?;
             dict.set_item("low", q.low)?;
+            // 字段集对齐 TdxHqClient（servertime 必备，新鲜度守卫依赖）；
+            // active*/reversed_bytes* 为额外保留的原始字段（超集，不破坏既有消费者）
+            dict.set_item("servertime", &q.servertime)?;
             dict.set_item("vol", q.vol)?;
             dict.set_item("cur_vol", q.cur_vol)?;
             dict.set_item("amount", q.amount)?;
