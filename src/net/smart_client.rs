@@ -286,6 +286,18 @@ impl ServerCache {
     }
 }
 
+/// 候选服务器是否全部处于黑名单
+///
+/// 全员拉黑时（典型：本地断网期间重连数轮，把 PRIMARY+ALL_KNOWN 全部拉黑），
+/// 调用方应降级为忽略黑名单照常尝试——黑名单的意图是"优先跳过坏机"，
+/// 不是"拒绝服务"，否则网络恢复后一次连接都不会再发起（CODE_REVIEW 09-15 发现 1）。
+fn all_blacklisted<'a>(
+    cache: &ServerCache,
+    mut servers: impl Iterator<Item = (&'a str, &'a str, u16)>,
+) -> bool {
+    servers.all(|(_, ip, port)| cache.is_blacklisted(ip, port))
+}
+
 // ================================================================
 // TdxSmartClient
 // ================================================================
@@ -359,13 +371,28 @@ impl TdxSmartClient {
             }
         }
 
-        // 2. 遍历 PRIMARY_SERVERS (跳过黑名单)
+        // 2. 遍历 PRIMARY_SERVERS (跳过黑名单；候选全员拉黑时降级照常尝试)
+        let ignore_blacklist = {
+            let cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
+            all_blacklisted(
+                &cache,
+                PRIMARY_SERVERS
+                    .iter()
+                    .copied()
+                    .chain(ALL_KNOWN_SERVERS.iter().copied()),
+            )
+        };
+        if ignore_blacklist {
+            logw!("smart", "all candidate servers blacklisted, retrying anyway to stay available");
+        }
+
         for &(name, ip, port) in PRIMARY_SERVERS {
-            if self
-                .cache
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .is_blacklisted(ip, port)
+            if !ignore_blacklist
+                && self
+                    .cache
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .is_blacklisted(ip, port)
             {
                 logi!("smart", "skipping blacklisted server: {}:{}", ip, port);
                 continue;
@@ -379,11 +406,12 @@ impl TdxSmartClient {
 
         // 3. 兜底: 遍历 ALL_KNOWN_SERVERS
         for &(name, ip, port) in ALL_KNOWN_SERVERS {
-            if self
-                .cache
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .is_blacklisted(ip, port)
+            if !ignore_blacklist
+                && self
+                    .cache
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .is_blacklisted(ip, port)
             {
                 continue;
             }
@@ -516,6 +544,22 @@ impl TdxSmartClient {
             .unwrap_or_else(|e| e.into_inner())
             .clone();
 
+        // 与 connect_to_any 同理：切换候选（除当前外）全员拉黑时降级照常尝试
+        let ignore_blacklist = {
+            let cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
+            all_blacklisted(
+                &cache,
+                PRIMARY_SERVERS.iter().copied().filter(|&(_, ip, port)| {
+                    !current
+                        .as_ref()
+                        .is_some_and(|(cur_ip, cur_port, _)| cur_ip == ip && *cur_port == port)
+                }),
+            )
+        };
+        if ignore_blacklist {
+            logw!("smart", "all failover candidates blacklisted, retrying anyway to stay available");
+        }
+
         // 遍历 PRIMARY_SERVERS，跳过当前和黑名单
         for &(name, ip, port) in PRIMARY_SERVERS {
             if let Some((ref cur_ip, cur_port, _)) = current {
@@ -524,11 +568,12 @@ impl TdxSmartClient {
                 }
             }
 
-            if self
-                .cache
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .is_blacklisted(ip, port)
+            if !ignore_blacklist
+                && self
+                    .cache
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .is_blacklisted(ip, port)
             {
                 continue;
             }
@@ -912,6 +957,20 @@ mod tests {
         cache.add_to_blacklist("5.6.7.8", 7709, "parse_error");
         cache.record_success("5.6.7.8", 7709, "srv", 10);
         assert!(cache.is_blacklisted("5.6.7.8", 7709), "parse_error 拉黑同理");
+    }
+
+    #[test]
+    fn test_all_blacklisted_degrade_flag() {
+        // 全员拉黑判定：降级开关的依据（CODE_REVIEW 09-15 发现 1）
+        let mut cache = ServerCache::with_path(tmp_cache_path("allbl"));
+        let servers = [("a", "1.1.1.1", 7709u16), ("b", "2.2.2.2", 7709u16)];
+        assert!(!all_blacklisted(&cache, servers.iter().copied()));
+
+        cache.add_to_blacklist("1.1.1.1", 7709, "connect_fail_streak");
+        assert!(!all_blacklisted(&cache, servers.iter().copied()), "还有候选未拉黑");
+
+        cache.add_to_blacklist("2.2.2.2", 7709, "kline_empty");
+        assert!(all_blacklisted(&cache, servers.iter().copied()), "应降级忽略黑名单");
     }
 
     #[test]
