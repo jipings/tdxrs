@@ -84,6 +84,10 @@ struct ServerStats {
 /// 连续失败达到该次数的服务器自动加入黑名单（成功即清零/解除）
 const BLACKLIST_FAIL_STREAK: u32 = 3;
 
+/// 连败拉黑的 reason 标识：`record_failure` 写入，`record_success` 据此（且仅据此）解除。
+/// kline_empty/parse_error 属协议级拉黑，TCP+握手成功验证不了，只能等 24h 过期。
+const BLACKLIST_REASON_STREAK: &str = "connect_fail_streak";
+
 /// 服务器缓存文件结构
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct ServerCache {
@@ -251,8 +255,11 @@ impl ServerCache {
         stats.consecutive_fail = 0;
         stats.avg_latency = (stats.avg_latency * (stats.success - 1) + latency_ms) / stats.success;
 
-        // 成功即解除拉黑：黑名单条目的恢复路径（probe_and_cache 探活成功）
-        self.blacklist.retain(|e| !(e.ip == ip && e.port == port));
+        // 成功仅解除连败拉黑（probe_and_cache 探活成功是它的恢复路径）；
+        // kline_empty/parse_error 是协议级异常，TCP+握手成功验证不了，留待 24h 过期
+        self.blacklist.retain(|e| {
+            !(e.ip == ip && e.port == port && e.reason == BLACKLIST_REASON_STREAK)
+        });
 
         self.save()
     }
@@ -272,7 +279,7 @@ impl ServerCache {
             stats.consecutive_fail >= BLACKLIST_FAIL_STREAK
         };
         if should_blacklist {
-            self.add_to_blacklist(ip, port, "connect_fail_streak");
+            self.add_to_blacklist(ip, port, BLACKLIST_REASON_STREAK);
         }
 
         self.save()
@@ -891,6 +898,20 @@ mod tests {
         assert!(cache.is_blacklisted("1.2.3.4", 7709));
         cache.record_success("1.2.3.4", 7709, "srv", 10); // 成功解除（探活恢复路径）
         assert!(!cache.is_blacklisted("1.2.3.4", 7709), "成功应解除拉黑");
+    }
+
+    #[test]
+    fn test_protocol_blacklist_survives_record_success() {
+        // 协议级拉黑（kline_empty/parse_error）不得被 TCP 级成功解除（如 probe），
+        // 只能等 24h 过期——CODE_REVIEW 09-15 发现 2
+        let mut cache = ServerCache::with_path(tmp_cache_path("protobl"));
+        cache.add_to_blacklist("1.2.3.4", 7709, "kline_empty");
+        cache.record_success("1.2.3.4", 7709, "srv", 10);
+        assert!(cache.is_blacklisted("1.2.3.4", 7709), "协议级拉黑不应被成功解除");
+
+        cache.add_to_blacklist("5.6.7.8", 7709, "parse_error");
+        cache.record_success("5.6.7.8", 7709, "srv", 10);
+        assert!(cache.is_blacklisted("5.6.7.8", 7709), "parse_error 拉黑同理");
     }
 
     #[test]
